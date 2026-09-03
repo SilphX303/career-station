@@ -1,0 +1,7 @@
+node_modules/
+backend/static/
+data/
+__pycache__/
+*.pyc
+.env
+frontend/tsconfig.tsbuildinfo
