@@ -133,3 +133,40 @@ class WatchlistSource(Source):
                 posted_at=j.get("published_on"),
             ))
         return roles
+
+
+def slug_candidates(name: str) -> list[str]:
+    base = re.sub(r"[^a-z0-9 ]+", " ", name.lower())
+    base = re.sub(r"\b(ltd|limited|plc|inc|group|technologies|technology|uk)\b", "", base)
+    words = base.split()
+    if not words:
+        return []
+    joined = "".join(words)
+    hyph = "-".join(words)
+    first = words[0]
+    out = [joined, hyph, first]
+    if len(words) > 1:
+        out.append(words[0] + words[1][:3])  # octoenergy-style abbreviations
+    return list(dict.fromkeys(x for x in out if x))
+
+
+async def resolve_feed(name: str, env: dict) -> str | None:
+    """Try the public ATS feeds for a company name. Returns a careers URL or None. No scraping."""
+    gh = env.get("CAREER_GH_BASE", "https://boards-api.greenhouse.io")
+    lv = env.get("CAREER_LEVER_BASE", "https://api.lever.co")
+    async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "career-station/1.0"}, follow_redirects=True) as c:
+        for slug in slug_candidates(name):
+            checks = [
+                (f"{gh}/v1/boards/{slug}/jobs", f"https://boards.greenhouse.io/{slug}", lambda j: bool(j.get("jobs"))),
+                (f"{lv}/v0/postings/{slug}?mode=json", f"https://jobs.lever.co/{slug}", lambda j: isinstance(j, list) and len(j) > 0),
+                (f"https://api.ashbyhq.com/posting-api/job-board/{slug}", f"https://jobs.ashbyhq.com/{slug}", lambda j: bool(j.get("jobs"))),
+                (f"https://apply.workable.com/api/v1/widget/accounts/{slug}", f"https://apply.workable.com/{slug}", lambda j: bool(j.get("jobs"))),
+            ]
+            for api, public, ok in checks:
+                try:
+                    r = await c.get(api)
+                    if r.status_code == 200 and ok(r.json()):
+                        return public
+                except Exception:  # noqa: BLE001
+                    continue
+    return None

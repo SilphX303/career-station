@@ -97,6 +97,7 @@ export const api = {
     j<{ ok: boolean }>(fetch(`/api/documents/${docId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content }) })),
   requestDoc: (id: number, kind: 'cv' | 'cover') =>
     j<{ id: number; status: string }>(fetch(`/api/roles/${id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) })),
+  resolveWatchlist: () => j<{ resolved: { name: string; url: string }[]; unresolved: string[]; watchlist: string[] }>(fetch('/api/watchlist/resolve', { method: 'POST' })),
   profile: () => j<Profile>(fetch('/api/profile')),
   saveProfile: (p: Partial<Profile>) =>
     j<Profile>(fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) })),

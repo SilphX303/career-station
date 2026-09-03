@@ -514,6 +514,67 @@ def digest(days: int = 7):
             "top": top, "briefs": briefs, "documents": docs}
 
 
+class ResolveIn(BaseModel):
+    names: list[str] | None = None  # default: every bare-name entry in the watchlist
+
+
+@app.post("/api/watchlist/resolve")
+async def watchlist_resolve(body: ResolveIn | None = None):
+    """Try the public ATS feeds for bare-name watchlist entries and rewrite the ones that resolve."""
+    from .sources.watchlist import parse_entry, resolve_feed
+    prof = get_profile()
+    entries = prof["watchlist"]
+    targets = set(body.names) if body and body.names else {e for e in entries if not parse_entry(e)["ats"]}
+    resolved, unresolved, out = [], [], []
+    for e in entries:
+        pe = parse_entry(e)
+        if e in targets and not pe["ats"]:
+            url = await resolve_feed(pe["name"], dict(os.environ))
+            if url:
+                out.append(f"{pe['name']} {url}")
+                resolved.append({"name": pe["name"], "url": url})
+                continue
+            unresolved.append(pe["name"])
+        out.append(e)
+    if resolved:
+        put_profile(ProfileIn(watchlist=out))
+    return {"resolved": resolved, "unresolved": unresolved, "watchlist": out}
+
+
+@app.get("/api/queue/watchlist")
+def queue_watchlist():
+    """Bare names the app could not resolve itself; the research bot can look them up by web search."""
+    from .sources.watchlist import parse_entry
+    entries = get_profile()["watchlist"]
+    return {"names": [parse_entry(e)["name"] for e in entries if not parse_entry(e)["ats"]]}
+
+
+class WatchResolved(BaseModel):
+    name: str
+    url: str | None
+
+
+@app.put("/api/watchlist/resolved")
+def watchlist_resolved(body: WatchResolved):
+    """Bot hands back a careers URL for a bare name (or null if none exists on a supported ATS)."""
+    from .sources.watchlist import parse_entry
+    if not body.url:
+        return {"ok": True, "changed": False}
+    if not parse_entry(body.url)["ats"]:
+        raise HTTPException(400, "url is not on a supported ATS")
+    entries = get_profile()["watchlist"]
+    out, changed = [], False
+    for e in entries:
+        pe = parse_entry(e)
+        if not pe["ats"] and pe["name"].strip().lower() == body.name.strip().lower():
+            out.append(f"{pe['name']} {body.url}"); changed = True
+        else:
+            out.append(e)
+    if changed:
+        put_profile(ProfileIn(watchlist=out))
+    return {"ok": True, "changed": changed}
+
+
 @app.get("/api/sources")
 def sources():
     con = db.connect()

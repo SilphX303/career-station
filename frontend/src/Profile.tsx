@@ -16,6 +16,8 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
   const [cvm, setCvm] = useState('')
   const [watch, setWatch] = useState('')
   const [saved, setSaved] = useState(false)
+  const [resolving, setResolving] = useState(false)
+  const [resolveMsg, setResolveMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
@@ -35,6 +37,17 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
     } catch (e) { setErr(String(e)) }
   }
 
+  async function findFeeds() {
+    setResolving(true); setResolveMsg(null)
+    try {
+      await api.saveProfile({ watchlist: split(watch) })
+      const r = await api.resolveWatchlist()
+      setWatch(lines(r.watchlist))
+      const found = r.resolved.map((x) => x.name).join(', ')
+      setResolveMsg(`${r.resolved.length} found${found ? ` (${found})` : ''}; ${r.unresolved.length} left for the bot to look up`)
+    } catch (e) { setErr(String(e)) } finally { setResolving(false) }
+  }
+
   if (!p) return <p className="text-sm text-dim">{err ?? 'Loading'}</p>
 
   const box = 'lcars-input w-full'
@@ -52,6 +65,10 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
         <div className="lcars-label mb-1">Watchlist, one per line</div>
         <p className="mb-2 text-sm text-dim">Companies you want. A name followed by a careers-page URL on Greenhouse, Lever, Ashby or Workable is crawled directly. A plain name flags that company wherever it appears. Watchlist roles ping at ten points below the threshold.</p>
         <textarea value={watch} onChange={(e) => setWatch(e.target.value)} rows={6} className={box} placeholder={'Monzo https://boards.greenhouse.io/monzo\nOctopus Energy https://jobs.lever.co/octoenergy\nCloudflare'} />
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button onClick={findFeeds} disabled={resolving} className="lcars-btn">{resolving ? 'Checking feeds' : 'Find feeds for names'}</button>
+          {resolveMsg && <span className="lcars-code text-lavender">{resolveMsg}</span>}
+        </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
