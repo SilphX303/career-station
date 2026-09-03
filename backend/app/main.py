@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import crawl, db, fulltext, notify, render, sync
+from . import cluster, crawl, db, fulltext, notify, render, sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -108,7 +108,8 @@ def list_roles(state: str | None = None, limit: int = 200):
                   sc.score, sc.reasons, sc.track, st.state,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cv' ORDER BY d.id DESC LIMIT 1) AS doc_cv,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover,
-                  rs.status AS brief_status, rs.brief AS brief_json
+                  rs.status AS brief_status, rs.brief AS brief_json,
+                  (SELECT COUNT(*) FROM roles m WHERE m.cluster_id = r.id) AS cluster_size
            FROM roles r
            LEFT JOIN research rs ON rs.role_id = r.id
            JOIN sources s ON s.id = r.source_id
@@ -116,6 +117,7 @@ def list_roles(state: str | None = None, limit: int = 200):
            LEFT JOIN status st ON st.role_id = r.id
            WHERE 1=1"""
     args: list = []
+    q += " AND r.cluster_id IS NULL"
     if state == "filtered":
         q += " AND r.filtered = 1"
     elif state:
@@ -152,6 +154,13 @@ def get_role(role_id: int):
     q, why = fulltext.assess(d.get("description"))
     d["truncated"] = q == "partial" and bool(d.get("url"))
     d["desc_reason"] = why
+    con2 = db.connect()
+    head = d["cluster_id"] or role_id
+    d["also_posted"] = [dict(m) for m in con2.execute(
+        """SELECT r.id, r.company, r.url, r.salary_min, r.salary_max, r.location, r.first_seen, s.name AS source
+           FROM roles r JOIN sources s ON s.id=r.source_id WHERE (r.cluster_id = ? OR r.id = ?) AND r.id != ? ORDER BY r.first_seen""",
+        (head, head, role_id))]
+    con2.close()
     return d
 
 
@@ -200,7 +209,7 @@ def queue_unscored(limit: int = 40):
         """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
                   r.url, r.description, r.posted_at, r.desc_quality, r.desc_reason, r.watch
            FROM roles r LEFT JOIN scores sc ON sc.role_id = r.id LEFT JOIN status st ON st.role_id = r.id
-           WHERE r.filtered = 0 AND sc.role_id IS NULL
+           WHERE r.filtered = 0 AND sc.role_id IS NULL AND r.cluster_id IS NULL
              AND (st.state IS NULL OR st.state NOT IN ('dismissed','rejected','declined'))
            ORDER BY r.first_seen DESC LIMIT ?""", (limit,))]
     for r in rows:
@@ -596,6 +605,14 @@ def watchlist_resolved(body: WatchResolved):
     if changed:
         put_profile(ProfileIn(watchlist=out))
     return {"ok": True, "changed": changed}
+
+
+@app.post("/api/cluster")
+def cluster_now():
+    con = db.connect()
+    out = cluster.run(con)
+    con.close()
+    return out
 
 
 @app.get("/api/sources")

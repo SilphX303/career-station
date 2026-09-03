@@ -7,7 +7,7 @@ import os
 import httpx
 
 from . import db
-from . import filters, fulltext
+from . import cluster, filters, fulltext
 from .sources import REGISTRY
 from .sources.watchlist import parse_entry
 
@@ -71,6 +71,10 @@ async def run_all() -> dict:
         log.info("%s: fetched=%d new=%d error=%s", name, len(roles), new, src.error)
     filled = await fill_descriptions(con, to_fill, env)
     summary["fulltext"] = filled
+    try:
+        summary["clusters"] = cluster.run(con)
+    except Exception as e:  # noqa: BLE001
+        log.warning("cluster pass failed: %s", e)
     con.close()
     return summary
 

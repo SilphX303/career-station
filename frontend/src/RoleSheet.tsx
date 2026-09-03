@@ -208,6 +208,23 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
             </section>
           )}
 
+          {detail && (detail.also_posted ?? []).length > 0 && (
+            <section>
+              <div className="lcars-label mb-1.5">Also posted as</div>
+              <ul className="space-y-1 text-sm">
+                {detail.also_posted!.map((m) => (
+                  <li key={m.id} className="flex flex-wrap items-baseline gap-x-2">
+                    <a href={m.url} target="_blank" rel="noreferrer" className="text-lavender hover:underline">{m.company ?? 'Unknown'}</a>
+                    <span className="lcars-code">{m.source}</span>
+                    {(m.salary_min || m.salary_max) && <span className="lcars-readout text-xs text-salmon">{m.salary_min && m.salary_max ? `£${Math.round(m.salary_min / 1000)}-${Math.round(m.salary_max / 1000)}k` : `£${Math.round((m.salary_max ?? m.salary_min ?? 0) / 1000)}k`}</span>}
+                    {m.location && <span className="text-dim">{m.location}</span>}
+                  </li>
+                ))}
+              </ul>
+              <p className="lcars-code mt-1">Same role, different posters. Salary ranges can differ between them.</p>
+            </section>
+          )}
+
           {detail?.note && (
             <section>
               <div className="lcars-label mb-1.5">Pipeline</div>

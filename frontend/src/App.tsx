@@ -124,6 +124,7 @@ export default function App() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
                           <span className="truncate text-[15px] text-glow">{r.title}</span>
+                          {(r.cluster_size ?? 0) > 0 && <span className="lcars-code shrink-0 text-mauve">×{(r.cluster_size ?? 0) + 1}</span>}
                           {r.watch === 1 && <span className="lcars-code shrink-0 text-lavender">WATCH</span>}
                           {r.track && <span className={`lcars-code shrink-0 ${trackText(r.track)}`}>{trackCode(r.track)}</span>}
                           {(r.doc_cv === 'ready' || r.doc_cover === 'ready') && (

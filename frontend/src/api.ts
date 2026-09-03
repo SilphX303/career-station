@@ -21,6 +21,7 @@ export type Role = {
   doc_cover?: string | null
   desc_quality?: string | null
   watch?: number
+  cluster_size?: number
   brief_status?: string | null
   red_flags?: number
   ai_interview?: string | null
@@ -64,7 +65,7 @@ export type Profile = {
   updated_at: string
 }
 
-export type RoleDetail = Role & { description: string | null; gaps: string[]; note: string | null; truncated?: boolean; desc_reason?: string | null }
+export type RoleDetail = Role & { description: string | null; gaps: string[]; note: string | null; truncated?: boolean; desc_reason?: string | null; also_posted?: { id: number; company: string | null; url: string; salary_min: number | null; salary_max: number | null; location: string | null; source: string; first_seen: string }[] }
 
 export type SourceHealth = {
   id: number

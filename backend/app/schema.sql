@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS roles (
   filter_reason TEXT,
   desc_quality TEXT,
   desc_reason TEXT,
-  watch INTEGER NOT NULL DEFAULT 0
+  watch INTEGER NOT NULL DEFAULT 0,
+  cluster_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS scores (
   role_id INTEGER PRIMARY KEY REFERENCES roles(id),
