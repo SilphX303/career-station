@@ -25,6 +25,7 @@ Env: `CAREER_URL` (https://career.arkadia.network, https not http; http redirect
    - below 50: not worth the energy
    Reasons: two short sentences, specific to this role and this profile, written so they read well on a phone card. Gaps: things to address in a cover note, or empty.
    Score fit, not "will I get it". Do not penalise unstated salary; note it as a gap.
+   The queue also carries `dismissals`: what Steve has rejected recently, grouped by reason (location, salary, level, stack, sector, agency, hours, other) with examples. Treat these as calibration: a role that closely resembles a dismissed pattern (same reason would apply) scores lower and the first reason names the resemblance, e.g. "Similar to three IT Manager roles dismissed as too junior". Do not let a single dismissal swing everything; three or more of one reason is a pattern.
    If a role has `watch: 1` it is from a company on Steve's watchlist. Do not inflate the score; the app already notifies at a lower bar for these. Do mention in reasons that it is a target employer.
    If a role has `partial_ad: true`, the description is a stub or cut off (`partial_reason` says why). Score what can be seen but cap the score at 70 and add the gap "Scored on a partial ad" so it never triggers a notification on incomplete information.
 

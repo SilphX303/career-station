@@ -51,6 +51,8 @@ export type Brief = {
 }
 export type Research = { role_id: number; status: 'pending' | 'ready' | 'failed'; brief: Brief | null; requested_at: string; generated_at: string | null }
 
+export type Dismissals = { total: number; by_reason: Record<string, { count: number; examples: { title: string; company: string | null }[] }> }
+
 export type Profile = {
   markdown: string
   cv_engineer: string
@@ -84,10 +86,11 @@ export const api = {
   roles: (state?: string) => j<Role[]>(fetch(`/api/roles${state ? `?state=${state}` : ''}`)),
   role: (id: number) => j<RoleDetail>(fetch(`/api/roles/${id}`)),
   sources: () => j<SourceHealth[]>(fetch('/api/sources')),
-  setStatus: (id: number, state: string) =>
+  setStatus: (id: number, state: string, reason?: string, note?: string) =>
     j<{ ok: boolean }>(fetch(`/api/roles/${id}/status`, {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state }),
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state, reason, note }),
     })),
+  dismissals: () => j<Dismissals>(fetch('/api/profile/dismissals')),
   loadDescription: (id: number) => j<{ ok: boolean; description: string | null; truncated: boolean }>(fetch(`/api/roles/${id}/description`, { method: 'POST' })),
   rescore: (id: number) => j<{ ok: boolean }>(fetch(`/api/roles/${id}/score`, { method: 'DELETE' })),
   research: (id: number) => j<Research | null>(fetch(`/api/roles/${id}/research`)),

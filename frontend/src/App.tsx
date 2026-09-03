@@ -43,10 +43,10 @@ export default function App() {
     }
   }, [])
 
-  async function act(id: number, state: string) {
+  async function act(id: number, state: string, reason?: string, note?: string) {
     setOpenId(null)
     setRoles((rs) => rs.filter((r) => r.id !== id))
-    try { await api.setStatus(id, state) } catch (e) { setErr(String(e)); void load() }
+    try { await api.setStatus(id, state, reason, note) } catch (e) { setErr(String(e)); void load() }
   }
 
   async function crawl() {

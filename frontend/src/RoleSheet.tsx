@@ -6,7 +6,7 @@ type Props = {
   role: Role
   threshold: number
   onClose: () => void
-  onStatus: (id: number, state: string) => void
+  onStatus: (id: number, state: string, reason?: string, note?: string) => void
 }
 
 export default function RoleSheet({ role, threshold, onClose, onStatus }: Props) {
@@ -22,6 +22,8 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
   const [dragY, setDragY] = useState(0)
   const [loadingAd, setLoadingAd] = useState(false)
   const [rescored, setRescored] = useState(false)
+  const [askReason, setAskReason] = useState(false)
+  const [reasonNote, setReasonNote] = useState('')
   const startY = useRef<number | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
 
@@ -226,10 +228,26 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
               {(state === 'applied' || state === 'progressing') && (
                 <button onClick={() => onStatus(role.id, 'rejected')} className="lcars-btn lcars-btn-quiet">Rejected</button>
               )}
-              {state !== 'dismissed' && <button onClick={() => onStatus(role.id, 'dismissed')} className="lcars-btn lcars-btn-quiet">Not for me</button>}
+              {state !== 'dismissed' && !askReason && <button onClick={() => setAskReason(true)} className="lcars-btn lcars-btn-quiet">Not for me</button>}
               {role.url && <a href={role.url} target="_blank" rel="noreferrer" className="lcars-btn">Open ad</a>}
             </div>
           </section>
+
+          {askReason && (
+            <section className="lcars-panel p-3">
+              <div className="lcars-label mb-2">Why not? One tap. This tunes the scoring.</div>
+              <div className="flex flex-wrap gap-2">
+                {([['location', 'Location'], ['salary', 'Salary'], ['level', 'Level'], ['stack', 'Stack'], ['sector', 'Sector'], ['agency', 'Agency'], ['hours', 'Hours / on-call'], ['other', 'Other']] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => onStatus(role.id, 'dismissed', k, reasonNote || undefined)} className="lcars-btn">{label}</button>
+                ))}
+              </div>
+              <input value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} placeholder="Optional: a few words, e.g. wants 4 days in Reading" className="lcars-input mt-2 w-full" />
+              <div className="mt-2 flex gap-3">
+                <button onClick={() => onStatus(role.id, 'dismissed')} className="lcars-code text-dim hover:text-lavender">Skip the reason</button>
+                <button onClick={() => setAskReason(false)} className="lcars-code text-dim hover:text-lavender">Cancel</button>
+              </div>
+            </section>
+          )}
 
           <section>
             <div className="lcars-label mb-2">Documents</div>

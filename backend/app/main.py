@@ -31,9 +31,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="career-station", lifespan=lifespan)
 
 
+REASONS = {"location", "salary", "level", "stack", "sector", "agency", "hours", "other"}
+
+
 class StatusIn(BaseModel):
     state: str
     note: str | None = None
+    reason: str | None = None
 
 
 class ScoreIn(BaseModel):
@@ -159,14 +163,32 @@ def set_status(role_id: int, body: StatusIn):
     if not con.execute("SELECT 1 FROM roles WHERE id=?", (role_id,)).fetchone():
         con.close()
         raise HTTPException(404)
+    if body.reason and body.reason not in REASONS:
+        raise HTTPException(400, f"reason must be one of {sorted(REASONS)}")
     with con:
         con.execute(
-            """INSERT INTO status (role_id, state, changed_at, note) VALUES (?,?,?,?)
-               ON CONFLICT(role_id) DO UPDATE SET state=excluded.state, changed_at=excluded.changed_at, note=excluded.note""",
-            (role_id, body.state, db.now(), body.note),
+            """INSERT INTO status (role_id, state, changed_at, note, reason) VALUES (?,?,?,?,?)
+               ON CONFLICT(role_id) DO UPDATE SET state=excluded.state, changed_at=excluded.changed_at,
+               note=excluded.note, reason=excluded.reason""",
+            (role_id, body.state, db.now(), body.note, body.reason),
         )
     con.close()
     return {"ok": True, "state": body.state}
+
+
+def dismissal_patterns(con, limit: int = 40) -> dict:
+    """What Steve has been saying no to, for the scoring bot and the Profile page."""
+    rows = con.execute(
+        """SELECT st.reason, st.note, r.title, r.company, r.location, r.salary_max, sc.score, sc.track
+           FROM status st JOIN roles r ON r.id=st.role_id LEFT JOIN scores sc ON sc.role_id=r.id
+           WHERE st.state IN ('dismissed','declined') AND st.reason IS NOT NULL
+           ORDER BY st.changed_at DESC LIMIT ?""", (limit,)).fetchall()
+    by: dict[str, list] = {}
+    for r in rows:
+        by.setdefault(r["reason"], []).append({
+            "title": r["title"], "company": r["company"], "location": r["location"],
+            "salary_max": r["salary_max"], "score": r["score"], "track": r["track"], "note": r["note"]})
+    return {"total": len(rows), "by_reason": {k: {"count": len(v), "examples": v[:5]} for k, v in by.items()}}
 
 
 @app.get("/api/queue/unscored")
@@ -184,8 +206,9 @@ def queue_unscored(limit: int = 40):
     for r in rows:
         r["partial_ad"] = r.pop("desc_quality") == "partial"
         r["partial_reason"] = r.pop("desc_reason")
+    patterns = dismissal_patterns(con)
     con.close()
-    return {"profile": prof["markdown"], "threshold": prof["threshold"], "roles": rows}
+    return {"profile": prof["markdown"], "threshold": prof["threshold"], "dismissals": patterns, "roles": rows}
 
 
 @app.put("/api/roles/{role_id}/score")
@@ -586,6 +609,14 @@ def sources():
 @app.post("/api/crawl")
 async def crawl_now():
     return await crawl.run_all()
+
+
+@app.get("/api/profile/dismissals")
+def get_dismissals():
+    con = db.connect()
+    d = dismissal_patterns(con)
+    con.close()
+    return d
 
 
 @app.get("/api/profile")

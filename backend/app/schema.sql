@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS status (
   role_id INTEGER PRIMARY KEY REFERENCES roles(id),
   state TEXT NOT NULL DEFAULT 'new',
   changed_at TEXT NOT NULL,
-  note TEXT
+  note TEXT,
+  reason TEXT
 );
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY,

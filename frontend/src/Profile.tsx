@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Profile } from './api'
+import { api, type Dismissals, type Profile } from './api'
 
 const lines = (a: string[] | undefined) => (a ?? []).join('\n')
 const split = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean)
@@ -18,6 +18,7 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
   const [saved, setSaved] = useState(false)
   const [resolving, setResolving] = useState(false)
   const [resolveMsg, setResolveMsg] = useState<string | null>(null)
+  const [dis, setDis] = useState<Dismissals | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
       setP(x); setMd(x.markdown); setCve(x.cv_engineer); setCvm(x.cv_management); setWatch(lines(x.watchlist)); setTerms(lines(x.search_terms)); setLocs(lines(x.filters.locations))
       setExcl(lines(x.filters.exclude_terms)); setFloor(String(x.filters.salary_floor ?? '')); setThr(String(x.threshold))
     }).catch((e) => setErr(String(e)))
+    api.dismissals().then(setDis).catch(() => undefined)
   }, [])
 
   async function save() {
@@ -60,6 +62,22 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
         <p className="mb-2 text-sm text-dim">What the scoring reads. Roles, stacks, scale, what you want, what you won't do.</p>
         <textarea value={md} onChange={(e) => setMd(e.target.value)} rows={14} className={`${box} leading-relaxed`} />
       </section>
+
+      {dis && dis.total > 0 && (
+        <section>
+          <div className="lcars-label mb-1">What you've been saying no to</div>
+          <p className="mb-2 text-sm text-dim">The scoring bot reads this. Three or more of one reason becomes a pattern it scores against.</p>
+          <ul className="space-y-1 text-sm">
+            {Object.entries(dis.by_reason).sort((a, b) => b[1].count - a[1].count).map(([k, v]) => (
+              <li key={k} className="flex gap-3">
+                <span className="lcars-readout w-6 text-right text-amber">{v.count}</span>
+                <span className="w-16 uppercase tracking-[0.14em] text-dim">{k}</span>
+                <span className="text-salmon">{v.examples.map((e) => e.title).join(', ')}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section>
         <div className="lcars-label mb-1">Watchlist, one per line</div>
