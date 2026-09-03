@@ -650,6 +650,53 @@ def nudges(stale_days: int = 10):
     return {"stale_applied": stale, "progressing": progressing, "flagged_open": flagged}
 
 
+@app.get("/api/market")
+def market(days: int = 60):
+    """What the titles Steve searches for are actually paying, from stated (not estimated) salaries in recent roles."""
+    from datetime import datetime, timedelta, timezone
+    import statistics
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+    con = db.connect()
+    floor = get_profile()["filters"].get("salary_floor")
+    rows = [dict(r) for r in con.execute(
+        """SELECT r.title, r.salary_min, r.salary_max, r.salary_text, r.remote_flag, r.location, sc.track, sc.score
+           FROM roles r LEFT JOIN scores sc ON sc.role_id=r.id
+           WHERE r.first_seen >= ? AND r.cluster_id IS NULL AND r.salary_max IS NOT NULL AND r.salary_max >= 20000
+             AND COALESCE(r.salary_text,'') != 'estimated'""", (since,))]
+    con.close()
+
+    def band(vals):
+        if not vals:
+            return None
+        vals = sorted(vals)
+        q = statistics.quantiles(vals, n=4) if len(vals) >= 4 else [vals[0], statistics.median(vals), vals[-1]]
+        return {"n": len(vals), "p25": round(q[0]), "median": round(statistics.median(vals)), "p75": round(q[2]), "max": vals[-1]}
+
+    def mid(r):
+        return (r["salary_min"] + r["salary_max"]) / 2 if r["salary_min"] else r["salary_max"]
+
+    by_track = {t: band([mid(r) for r in rows if r["track"] == t]) for t in ("engineer", "management")}
+    families = {
+        "Head of IT / IT Director": r"head of it|it director|director of it",
+        "IT Manager / Ops Manager": r"it manager|it operations manager|service manager|technology manager",
+        "Modern Workplace / EUC": r"modern workplace|euc|end user|endpoint|workplace",
+        "IAM / Identity": r"identity|iam|idam|access management",
+        "Infrastructure / Platform": r"infrastructure|platform|systems engineer",
+        "TechOps / IT Engineer": r"techops|tech ops|it engineer|corporate it|it support engineer",
+    }
+    import re
+    by_family = {}
+    for name, rx in families.items():
+        vals = [mid(r) for r in rows if re.search(rx, r["title"], re.I)]
+        by_family[name] = band(vals)
+    remote = band([mid(r) for r in rows if r["remote_flag"]])
+    onsite = band([mid(r) for r in rows if not r["remote_flag"]])
+    above = sum(1 for r in rows if floor and r["salary_max"] >= floor)
+    good = band([mid(r) for r in rows if (r["score"] or 0) >= 60])
+    return {"days": days, "roles_with_stated_salary": len(rows), "floor": floor, "at_or_above_floor": above,
+            "by_track": by_track, "by_family": by_family, "remote": remote, "onsite": onsite, "good_fit_60_plus": good}
+
+
 @app.get("/api/sources")
 def sources():
     con = db.connect()

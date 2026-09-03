@@ -53,6 +53,9 @@ export type Brief = {
 }
 export type Research = { role_id: number; status: 'pending' | 'ready' | 'failed'; brief: Brief | null; requested_at: string; generated_at: string | null }
 
+export type Band = { n: number; p25: number; median: number; p75: number; max: number } | null
+export type Market = { days: number; roles_with_stated_salary: number; floor: number | null; at_or_above_floor: number; by_track: Record<string, Band>; by_family: Record<string, Band>; remote: Band; onsite: Band; good_fit_60_plus: Band }
+
 export type Nudges = {
   stale_applied: { id: number; title: string; company: string | null; days: number }[]
   progressing: { id: number; title: string; company: string | null; note: string | null; prep_ready: number; brief_status: string | null }[]
@@ -106,6 +109,7 @@ export const api = {
   docs: (id: number) => j<Doc[]>(fetch(`/api/roles/${id}/documents`)),
   editDoc: (docId: number, content: string) =>
     j<{ ok: boolean }>(fetch(`/api/documents/${docId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content }) })),
+  market: () => j<Market>(fetch('/api/market')),
   nudges: () => j<Nudges>(fetch('/api/nudges')),
   requestDoc: (id: number, kind: 'cv' | 'cover' | 'prep') =>
     j<{ id: number; status: string }>(fetch(`/api/roles/${id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) })),

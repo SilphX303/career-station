@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Dismissals, type Profile } from './api'
+import { api, type Band, type Dismissals, type Market, type Profile } from './api'
 
 const lines = (a: string[] | undefined) => (a ?? []).join('\n')
 const split = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean)
@@ -19,6 +19,7 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
   const [resolving, setResolving] = useState(false)
   const [resolveMsg, setResolveMsg] = useState<string | null>(null)
   const [dis, setDis] = useState<Dismissals | null>(null)
+  const [mkt, setMkt] = useState<Market | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
       setExcl(lines(x.filters.exclude_terms)); setFloor(String(x.filters.salary_floor ?? '')); setThr(String(x.threshold))
     }).catch((e) => setErr(String(e)))
     api.dismissals().then(setDis).catch(() => undefined)
+    api.market().then(setMkt).catch(() => undefined)
   }, [])
 
   async function save() {
@@ -50,6 +52,15 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
     } catch (e) { setErr(String(e)) } finally { setResolving(false) }
   }
 
+  const k = (n: number) => `£${Math.round(n / 1000)}k`
+  const Row = ({ label, b }: { label: string; b: Band }) => b ? (
+    <li className="flex items-baseline gap-3">
+      <span className="w-44 shrink-0 truncate text-dim">{label}</span>
+      <span className="lcars-readout text-salmon">{k(b.p25)} · <span className="text-amber">{k(b.median)}</span> · {k(b.p75)}</span>
+      <span className="lcars-code">n={b.n} max {k(b.max)}</span>
+    </li>
+  ) : null
+
   if (!p) return <p className="text-sm text-dim">{err ?? 'Loading'}</p>
 
   const box = 'lcars-input w-full'
@@ -62,6 +73,21 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
         <p className="mb-2 text-sm text-dim">What the scoring reads. Roles, stacks, scale, what you want, what you won't do.</p>
         <textarea value={md} onChange={(e) => setMd(e.target.value)} rows={14} className={`${box} leading-relaxed`} />
       </section>
+
+      {mkt && mkt.roles_with_stated_salary > 0 && (
+        <section>
+          <div className="lcars-label mb-1">Market, last {mkt.days} days</div>
+          <p className="mb-2 text-sm text-dim">Stated salaries only, estimates excluded, one row per cluster. Lower quartile · median · upper quartile. {mkt.at_or_above_floor} of {mkt.roles_with_stated_salary} roles reach your £{Math.round((mkt.floor ?? 0) / 1000)}k floor.</p>
+          <ul className="space-y-1 text-sm">
+            <Row label="Engineer track" b={mkt.by_track.engineer} />
+            <Row label="Management track" b={mkt.by_track.management} />
+            <Row label="Good fit (score 60+)" b={mkt.good_fit_60_plus} />
+            <Row label="Remote" b={mkt.remote} />
+            <Row label="On site or hybrid" b={mkt.onsite} />
+            {Object.entries(mkt.by_family).map(([n, b]) => <Row key={n} label={n} b={b} />)}
+          </ul>
+        </section>
+      )}
 
       {dis && dis.total > 0 && (
         <section>
