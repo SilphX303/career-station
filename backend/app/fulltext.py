@@ -24,7 +24,7 @@ def assess(desc: str | None) -> tuple[str, str | None]:
         return "partial", "ends with an ellipsis"
     if len(d) < 600:
         return "partial", f"only {len(d)} characters"
-    if d[-1] not in ".!?)]\"'":
+    if len(d) < 1500 and d[-1] not in ".!?)]\"'":
         return "partial", "ends mid-sentence"
     if not _SPEC_WORDS.search(d):
         return "partial", "no job or person spec wording"
@@ -33,6 +33,21 @@ def assess(desc: str | None) -> tuple[str, str | None]:
 
 def looks_truncated(desc: str | None) -> bool:
     return assess(desc)[0] == "partial"
+
+
+_CUT_MARKERS = re.compile(
+    r"\n\s*(Apply for this job|Apply now|Apply for job|Create alert|Create a job alert|Similar jobs|Related jobs|Report this job|Share this job|Save this job|Get new jobs for this search by email|By creating an alert)\b.*",
+    re.S | re.I,
+)
+
+
+def trim_chrome(text: str) -> str:
+    """Drop page furniture that follows the ad body, then trailing short nav-like lines."""
+    t = _CUT_MARKERS.sub("", text)
+    lines = t.rstrip().split("\n")
+    while lines and len(lines[-1].strip()) < 40 and len(lines) > 5 and not lines[-1].strip().endswith((".", "!", "?")):
+        lines.pop()
+    return "\n".join(lines).strip()
 
 
 def _to_text(fragment: str) -> str:
@@ -53,14 +68,14 @@ def extract(page: str) -> str:
         if len(t) > len(best):
             best = t
     if len(best) >= 400:
-        return best[:12000]
+        return trim_chrome(best)[:12000]
     for m in _BLOCK.finditer(page):
         t = _to_text(m.group(2))
         if len(t) > len(best):
             best = t
     if len(best) < 400:
         best = _to_text(page)
-    return best[:12000]
+    return trim_chrome(best)[:12000]
 
 
 async def reed_full(client: httpx.AsyncClient, base: str, job_id: str) -> str | None:
