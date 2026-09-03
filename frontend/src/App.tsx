@@ -130,6 +130,9 @@ export default function App() {
                           )}
                           {(r.doc_cv === 'pending' || r.doc_cover === 'pending') && <span className="alive-dot shrink-0" />}
                           {r.desc_quality === 'partial' && <span className="lcars-code shrink-0 text-amber/70">PARTIAL</span>}
+                          {r.brief_status === 'ready' && (r.red_flags ?? 0) > 0 && <span className="lcars-code shrink-0 text-alert">{r.ai_interview === 'yes' ? 'AI-INT' : `${r.red_flags} RED`}</span>}
+                          {r.brief_status === 'ready' && (r.red_flags ?? 0) === 0 && <span className="lcars-code shrink-0 text-sage">BRIEF</span>}
+                          {r.brief_status === 'pending' && <span className="alive-dot shrink-0" />}
                         </div>
                         <div className="truncate text-xs text-dim">
                           {isAgency(r) && <span className="lcars-code mr-1.5">AGY</span>}

@@ -20,6 +20,9 @@ export type Role = {
   doc_cv?: string | null
   doc_cover?: string | null
   desc_quality?: string | null
+  brief_status?: string | null
+  red_flags?: number
+  ai_interview?: string | null
 }
 
 export type Doc = {
@@ -30,6 +33,22 @@ export type Doc = {
   requested_at: string
   generated_at: string | null
 }
+
+export type Flag = { kind: 'red' | 'amber' | 'green'; text: string; source?: string }
+export type Brief = {
+  verdict?: string
+  ai_interview?: 'yes' | 'no' | 'unknown'
+  salary_honesty?: string
+  hiring_process?: string
+  glassdoor?: { rating?: number | null; reviews?: number | null; themes?: string[] }
+  flags?: Flag[]
+  stack?: string[]
+  news?: string[]
+  company?: { size?: string; sector?: string; hq?: string }
+  sources?: string[]
+  error?: string
+}
+export type Research = { role_id: number; status: 'pending' | 'ready' | 'failed'; brief: Brief | null; requested_at: string; generated_at: string | null }
 
 export type Profile = {
   markdown: string
@@ -69,6 +88,8 @@ export const api = {
     })),
   loadDescription: (id: number) => j<{ ok: boolean; description: string | null; truncated: boolean }>(fetch(`/api/roles/${id}/description`, { method: 'POST' })),
   rescore: (id: number) => j<{ ok: boolean }>(fetch(`/api/roles/${id}/score`, { method: 'DELETE' })),
+  research: (id: number) => j<Research | null>(fetch(`/api/roles/${id}/research`)),
+  requestResearch: (id: number) => j<{ ok: boolean }>(fetch(`/api/roles/${id}/research`, { method: 'POST' })),
   docs: (id: number) => j<Doc[]>(fetch(`/api/roles/${id}/documents`)),
   requestDoc: (id: number, kind: 'cv' | 'cover') =>
     j<{ id: number; status: string }>(fetch(`/api/roles/${id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) })),

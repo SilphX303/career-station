@@ -151,9 +151,8 @@ Stored in the DB but exportable and importable as a file so it can be edited out
 - 3a (done): `POST /api/roles/{id}/documents {kind}` queues a request; `GET /api/queue/documents` gives the bot the role, ad, score, gaps, profile and the base CV for the track; `PUT /api/documents/{id}` returns markdown. Card shows drafting / view / copy / redo. Profile page holds the two base CVs.
 - 3b: DOCX and PDF export of a ready document, server-side. Edit-in-place before export.
 
-### Phase 4: research
-- Per role: company brief from web search (size, sector, recent news, Glassdoor sentiment, Companies House filing summary, likely tech stack from job ads and engineering blogs). Cached, regenerated on demand.
-- Interview prep view: brief plus the role's reasons and gaps
+### Phase 4: research (done)
+- `POST /api/roles/{id}/research` queues; scoring at or above threshold queues automatically. `GET /api/queue/research` for the bot, `PUT /api/roles/{id}/research` result. Brief rendered in the sheet alongside fit, gaps and documents, which is the interview-prep view.
 
 ## Dev loop
 

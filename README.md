@@ -28,6 +28,8 @@ Dockerfile build from GitHub. Add a named volume `career-data` mounted at `/data
 
 - `POST /api/roles/{id}/documents` `{"kind":"cv"|"cover"}` queue a draft; `GET /api/queue/documents` for the bot; `PUT /api/documents/{id}` result
 
-Scoring and drafting are done by the Claude Code bot, see `bot/score-roles.md` and `bot/draft-documents.md`.
+- `POST /api/roles/{id}/research` queue a brief; `GET /api/queue/research` for the bot; `PUT /api/roles/{id}/research` result
+
+Scoring, drafting and research are done by the Claude Code bot, see `bot/score-roles.md`, `bot/draft-documents.md` and `bot/research-roles.md`.
 
 Plan and phases: see `career-station-plan.md`.

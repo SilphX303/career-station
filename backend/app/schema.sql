@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS documents (
   model TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+CREATE TABLE IF NOT EXISTS research (
+  role_id INTEGER PRIMARY KEY REFERENCES roles(id),
+  status TEXT NOT NULL DEFAULT 'pending',
+  brief TEXT,
+  requested_at TEXT NOT NULL,
+  generated_at TEXT,
+  model TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_research_status ON research(status);
 CREATE TABLE IF NOT EXISTS profile (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   markdown TEXT NOT NULL DEFAULT '',

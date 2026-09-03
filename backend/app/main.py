@@ -64,6 +64,13 @@ class SyncIn(BaseModel):
     source: str = "inbox"
 
 
+class BriefResult(BaseModel):
+    brief: dict | None = None
+    status: str = "ready"  # ready | failed
+    model: str | None = None
+    error: str | None = None
+
+
 class DocRequest(BaseModel):
     kind: str  # cv | cover
 
@@ -95,8 +102,10 @@ def list_roles(state: str | None = None, limit: int = 200):
                   r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, r.desc_quality, s.name AS source,
                   sc.score, sc.reasons, sc.track, st.state,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cv' ORDER BY d.id DESC LIMIT 1) AS doc_cv,
-                  (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover
+                  (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover,
+                  rs.status AS brief_status, rs.brief AS brief_json
            FROM roles r
+           LEFT JOIN research rs ON rs.role_id = r.id
            JOIN sources s ON s.id = r.source_id
            LEFT JOIN scores sc ON sc.role_id = r.id
            LEFT JOIN status st ON st.role_id = r.id
@@ -114,6 +123,9 @@ def list_roles(state: str | None = None, limit: int = 200):
     rows = [dict(r) for r in con.execute(q, args)]
     for r in rows:
         r["reasons"] = json.loads(r["reasons"]) if r.get("reasons") else []
+        b = json.loads(r.pop("brief_json")) if r.get("brief_json") else None
+        r["red_flags"] = sum(1 for f in (b or {}).get("flags", []) if f.get("kind") == "red")
+        r["ai_interview"] = (b or {}).get("ai_interview")
     con.close()
     return rows
 
@@ -193,6 +205,9 @@ async def put_score(role_id: int, body: ScoreIn):
             (role_id, body.score, json.dumps(body.reasons), json.dumps(body.gaps), db.now(), body.model, body.track),
         )
     notified = False
+    if body.score >= thr:
+        with con:
+            con.execute("INSERT OR IGNORE INTO research (role_id, status, requested_at) VALUES (?, 'pending', ?)", (role_id, db.now()))
     if body.score >= thr and not con.execute(
         "SELECT 1 FROM notifications WHERE role_id=? AND channel='discord'", (role_id,)).fetchone():
         if await notify.discord(dict(role), body.score, body.reasons):
@@ -272,6 +287,69 @@ def _placeholder_role(con, it: "SyncItem", source: str, ts: str) -> dict:
            first_seen, last_seen, hash, filtered) VALUES (?,?,?,?,?,?,0,?,?,?,0)""",
         (sid, None, "", title, it.company, None, ts, ts, h))
     return {"id": cur.lastrowid, "company": it.company, "title": title, "state": None}
+
+
+@app.post("/api/roles/{role_id}/research")
+def request_research(role_id: int):
+    con = db.connect()
+    if not con.execute("SELECT 1 FROM roles WHERE id=?", (role_id,)).fetchone():
+        con.close()
+        raise HTTPException(404)
+    with con:
+        con.execute(
+            """INSERT INTO research (role_id, status, requested_at) VALUES (?, 'pending', ?)
+               ON CONFLICT(role_id) DO UPDATE SET status='pending', requested_at=excluded.requested_at, brief=NULL""",
+            (role_id, db.now()))
+    con.close()
+    return {"ok": True, "status": "pending"}
+
+
+@app.get("/api/roles/{role_id}/research")
+def get_research(role_id: int):
+    con = db.connect()
+    r = con.execute("SELECT * FROM research WHERE role_id=?", (role_id,)).fetchone()
+    con.close()
+    if not r:
+        return None
+    d = dict(r)
+    d["brief"] = json.loads(d["brief"]) if d.get("brief") else None
+    return d
+
+
+@app.get("/api/queue/research")
+def queue_research(limit: int = 3):
+    """For the research bot: pending briefs with the role and what the profile cares about."""
+    con = db.connect()
+    prof = get_profile()
+    items = []
+    for rs in con.execute("SELECT role_id FROM research WHERE status='pending' ORDER BY requested_at LIMIT ?", (limit,)):
+        r = con.execute(
+            """SELECT r.id, r.title, r.company, r.location, r.salary_min, r.salary_max, r.url, r.description,
+                      sc.score, sc.gaps, sc.track FROM roles r LEFT JOIN scores sc ON sc.role_id=r.id WHERE r.id=?""",
+            (rs["role_id"],)).fetchone()
+        role = dict(r)
+        role["gaps"] = json.loads(role["gaps"]) if role.get("gaps") else []
+        role["description"] = (role["description"] or "")[:3000]
+        items.append(role)
+    con.close()
+    filt = prof["filters"]
+    return {"constraints": {"salary_floor": filt.get("salary_floor"), "will_not": ["AI-conducted interviews", "pure service desk", "contract under 6 months"]}, "items": items}
+
+
+@app.put("/api/roles/{role_id}/research")
+def put_research(role_id: int, body: BriefResult):
+    if body.status not in ("ready", "failed"):
+        raise HTTPException(400, "status must be ready or failed")
+    con = db.connect()
+    if not con.execute("SELECT 1 FROM research WHERE role_id=?", (role_id,)).fetchone():
+        con.close()
+        raise HTTPException(404)
+    payload = body.brief if body.status == "ready" else {"error": body.error or "research failed"}
+    with con:
+        con.execute("UPDATE research SET brief=?, status=?, generated_at=?, model=? WHERE role_id=?",
+                    (json.dumps(payload), body.status, db.now(), body.model, role_id))
+    con.close()
+    return {"ok": True}
 
 
 DOC_KINDS = {"cv", "cover"}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type Doc, type Role, type RoleDetail } from './api'
+import { api, type Doc, type Research, type Role, type RoleDetail } from './api'
 import { agoLong, isAgency, joinReasons, money, salary, trackBorder, trackCode, trackText } from './format'
 
 type Props = {
@@ -12,6 +12,7 @@ type Props = {
 export default function RoleSheet({ role, threshold, onClose, onStatus }: Props) {
   const [detail, setDetail] = useState<RoleDetail | null>(null)
   const [docs, setDocs] = useState<Doc[]>([])
+  const [research, setResearch] = useState<Research | null>(null)
   const [showDoc, setShowDoc] = useState<Doc | null>(null)
   const [copied, setCopied] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -24,21 +25,29 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
   async function loadDocs() {
     try { setDocs(await api.docs(role.id)) } catch { setDocs([]) }
   }
+  async function loadResearch() {
+    try { setResearch(await api.research(role.id)) } catch { setResearch(null) }
+  }
+  async function brief() {
+    try { await api.requestResearch(role.id); await loadResearch() } catch (e) { setErr(String(e)) }
+  }
 
   useEffect(() => {
     let live = true
     api.role(role.id).then((d) => { if (live) setDetail(d) }).catch((e) => setErr(String(e)))
     void loadDocs()
+    void loadResearch()
     return () => { live = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role.id])
 
   useEffect(() => {
-    if (!docs.some((d) => d.status === 'pending')) return
-    const t = setInterval(() => void loadDocs(), 20000)
+    const pend = docs.some((d) => d.status === 'pending') || research?.status === 'pending'
+    if (!pend) return
+    const t = setInterval(() => { void loadDocs(); void loadResearch() }, 20000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docs])
+  }, [docs, research])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -123,6 +132,54 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
               <p className="text-sm leading-relaxed text-glow">{joinReasons(role.reasons)}</p>
             </section>
           )}
+
+          <section>
+            <div className="lcars-label mb-1.5">Brief</div>
+            {!research && <button onClick={brief} className="lcars-btn lcars-btn-primary">Brief me</button>}
+            {research?.status === 'pending' && (
+              <span className="lcars-btn opacity-70"><span className="alive-dot mr-2 inline-block align-middle" />Researching, requested {agoLong(research.requested_at)}</span>
+            )}
+            {research?.status === 'failed' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="lcars-code text-alert">{research.brief?.error ?? 'Research failed'}</span>
+                <button onClick={brief} className="lcars-btn">Retry</button>
+              </div>
+            )}
+            {research?.status === 'ready' && research.brief && (
+              <div className="space-y-3">
+                {research.brief.verdict && <p className="text-sm leading-relaxed text-glow">{research.brief.verdict}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <span className={`lcars-code border px-1.5 py-0.5 ${research.brief.ai_interview === 'yes' ? 'border-alert text-alert' : research.brief.ai_interview === 'no' ? 'border-sage text-sage' : 'border-line-hi'}`}>
+                    AI interview: {research.brief.ai_interview ?? 'unknown'}
+                  </span>
+                  {research.brief.glassdoor?.rating != null && (
+                    <span className="lcars-code border border-line-hi px-1.5 py-0.5">Glassdoor {research.brief.glassdoor.rating}{research.brief.glassdoor.reviews ? ` (${research.brief.glassdoor.reviews})` : ''}</span>
+                  )}
+                  {research.brief.company?.size && <span className="lcars-code border border-line-hi px-1.5 py-0.5">{research.brief.company.size}</span>}
+                </div>
+                {(research.brief.flags ?? []).length > 0 && (
+                  <ul className="space-y-1 text-sm">
+                    {research.brief.flags!.map((f, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className={`lcars-code mt-1 shrink-0 ${f.kind === 'red' ? 'text-alert' : f.kind === 'green' ? 'text-sage' : 'text-amber'}`}>{f.kind === 'red' ? 'RED' : f.kind === 'green' ? 'GRN' : 'AMB'}</span>
+                        <span className="text-salmon">{f.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {research.brief.salary_honesty && <p className="text-sm text-salmon"><span className="lcars-code mr-2">Salary</span>{research.brief.salary_honesty}</p>}
+                {research.brief.hiring_process && <p className="text-sm text-salmon"><span className="lcars-code mr-2">Process</span>{research.brief.hiring_process}</p>}
+                {(research.brief.glassdoor?.themes ?? []).length > 0 && <p className="text-sm text-salmon"><span className="lcars-code mr-2">Reviews</span>{research.brief.glassdoor!.themes!.join('; ')}</p>}
+                {(research.brief.stack ?? []).length > 0 && <p className="text-sm text-salmon"><span className="lcars-code mr-2">Stack</span>{research.brief.stack!.join(', ')}</p>}
+                {(research.brief.news ?? []).length > 0 && <p className="text-sm text-salmon"><span className="lcars-code mr-2">News</span>{research.brief.news!.join('; ')}</p>}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {(research.brief.sources ?? []).slice(0, 6).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="lcars-code text-lavender hover:underline">{new URL(u).hostname.replace('www.', '')}</a>)}
+                  <button onClick={brief} className="lcars-code text-dim hover:text-lavender">redo</button>
+                  {research.generated_at && <span className="lcars-code">briefed {agoLong(research.generated_at)}</span>}
+                </div>
+              </div>
+            )}
+          </section>
 
           {detail && detail.gaps.length > 0 && (
             <section>
