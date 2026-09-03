@@ -48,12 +48,25 @@ CREATE TABLE IF NOT EXISTS notifications (
   channel TEXT NOT NULL,
   sent_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS documents (
+  id INTEGER PRIMARY KEY,
+  role_id INTEGER NOT NULL REFERENCES roles(id),
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  content TEXT,
+  requested_at TEXT NOT NULL,
+  generated_at TEXT,
+  model TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE TABLE IF NOT EXISTS profile (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   markdown TEXT NOT NULL DEFAULT '',
   search_terms TEXT NOT NULL DEFAULT '[]',
   filters TEXT NOT NULL DEFAULT '{}',
   threshold INTEGER NOT NULL DEFAULT 75,
+  cv_engineer TEXT NOT NULL DEFAULT '',
+  cv_management TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_roles_last_seen ON roles(last_seen);

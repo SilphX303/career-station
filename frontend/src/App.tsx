@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type Role, type RoleDetail, type SourceHealth } from './api'
+import { api, type Doc, type Role, type RoleDetail, type SourceHealth } from './api'
 import ProfilePage from './Profile'
 
 const FILTERS: { key: string; label: string }[] = [
@@ -49,11 +49,27 @@ export default function App() {
   const [directOnly, setDirectOnly] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   const [detail, setDetail] = useState<RoleDetail | null>(null)
+  const [docs, setDocs] = useState<Doc[]>([])
+  const [showDoc, setShowDoc] = useState<number | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  async function loadDocs(id: number) {
+    try { setDocs(await api.docs(id)) } catch { setDocs([]) }
+  }
+
+  async function draft(id: number, kind: 'cv' | 'cover') {
+    try { await api.requestDoc(id, kind); await loadDocs(id) } catch (e) { setErr(String(e)) }
+  }
+
+  async function copyDoc(text: string) {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1200) } catch { setErr('Copy failed') }
+  }
 
   async function toggle(id: number) {
     if (open === id) { setOpen(null); setDetail(null); return }
-    setOpen(id); setDetail(null)
+    setOpen(id); setDetail(null); setDocs([]); setShowDoc(null)
     try { setDetail(await api.role(id)) } catch (e) { setErr(String(e)) }
+    void loadDocs(id)
   }
   const [roles, setRoles] = useState<Role[]>([])
   const [sources, setSources] = useState<SourceHealth[]>([])
@@ -72,6 +88,12 @@ export default function App() {
   }, [filter])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (open == null || !docs.some((d) => d.status === 'pending')) return
+    const t = setInterval(() => void loadDocs(open), 20000)
+    return () => clearInterval(t)
+  }, [open, docs])
+
   useEffect(() => {
     const id = Number(new URLSearchParams(window.location.search).get('role'))
     if (id) void toggle(id)
@@ -174,6 +196,35 @@ export default function App() {
                   {detail && detail.note && <p className="text-muted">{detail.note}</p>}
                   {detail && (
                     <div>
+                      <p className="mb-1 text-xs uppercase tracking-wide text-muted">Documents</p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {(['cv', 'cover'] as const).map((k) => {
+                          const d = docs.find((x) => x.kind === k)
+                          const label = k === 'cv' ? 'CV' : 'Cover note'
+                          if (!d) return <button key={k} onClick={() => draft(r.id, k)} className="text-amber hover:underline">Draft {label}</button>
+                          if (d.status === 'pending') return <span key={k} className="text-muted">{label}: drafting, usually under 10 min</span>
+                          if (d.status === 'failed') return <button key={k} onClick={() => draft(r.id, k)} className="text-rust hover:underline">{label} failed, retry</button>
+                          return (
+                            <span key={k} className="flex gap-2">
+                              <button onClick={() => setShowDoc(showDoc === d.id ? null : d.id)} className="text-sage hover:underline">{showDoc === d.id ? `Hide ${label}` : `View ${label}`}</button>
+                              <a href={`/api/documents/${d.id}.pdf`} className="text-paper hover:underline">PDF</a>
+                              <button onClick={() => draft(r.id, k)} className="text-muted hover:underline">redo</button>
+                            </span>
+                          )
+                        })}
+                      </div>
+                      {showDoc != null && docs.find((d) => d.id === showDoc)?.content && (
+                        <div className="mt-2 rounded border border-line bg-surface p-3">
+                          <div className="mb-2 flex justify-end">
+                            <button onClick={() => copyDoc(docs.find((d) => d.id === showDoc)!.content!)} className="text-xs text-amber hover:underline">{copied ? 'Copied' : 'Copy markdown'}</button>
+                          </div>
+                          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-paper/90">{docs.find((d) => d.id === showDoc)!.content}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {detail && (
+                    <div>
                       <p className="mb-1 text-xs uppercase tracking-wide text-muted">The ad</p>
                       <p className="whitespace-pre-line leading-relaxed text-paper/80">{detail.description || (r.url ? 'No description captured for this one; open the ad.' : 'Added from the inbox sweep; no ad on file.')}</p>
                     </div>
@@ -201,7 +252,7 @@ export default function App() {
       <footer className="fixed inset-x-0 bottom-0 border-t border-line bg-ink/95 px-4 py-2 text-xs text-muted backdrop-blur">
         <div className="mx-auto flex max-w-2xl gap-4 overflow-x-auto">
           {sources.length === 0 && <span>No sources have run yet.</span>}
-          {sources.map((s) => (
+          {sources.filter((s) => s.kind !== 'manual').map((s) => (
             <span key={s.id} className="shrink-0" title={s.last_error ?? ''}>
               <span className={`mr-1 inline-block size-2 rounded-full ${s.last_ok === 1 ? 'bg-sage' : s.last_ok === 0 ? 'bg-rust' : 'bg-line'}`} />
               {s.name} {s.last_ok == null ? 'not set up' : `${s.last_run ? ago(s.last_run) : ''}${s.last_error ? `: ${s.last_error}` : ''}`}

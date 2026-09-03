@@ -19,8 +19,19 @@ export type Role = {
   filter_reason: string | null
 }
 
+export type Doc = {
+  id: number
+  kind: 'cv' | 'cover'
+  status: 'pending' | 'ready' | 'failed'
+  content: string | null
+  requested_at: string
+  generated_at: string | null
+}
+
 export type Profile = {
   markdown: string
+  cv_engineer: string
+  cv_management: string
   search_terms: string[]
   filters: { salary_floor?: number; locations?: string[]; exclude_terms?: string[] }
   threshold: number
@@ -53,6 +64,9 @@ export const api = {
     j<{ ok: boolean }>(fetch(`/api/roles/${id}/status`, {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state }),
     })),
+  docs: (id: number) => j<Doc[]>(fetch(`/api/roles/${id}/documents`)),
+  requestDoc: (id: number, kind: 'cv' | 'cover') =>
+    j<{ id: number; status: string }>(fetch(`/api/roles/${id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) })),
   profile: () => j<Profile>(fetch('/api/profile')),
   saveProfile: (p: Partial<Profile>) =>
     j<Profile>(fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) })),

@@ -12,6 +12,7 @@ Sibling of cupid-station and Arkadia Forge. Same stack, same dev loop, same depl
 - Phase 1a: filters, profile page, scoring queue and score endpoint, Discord notify on score. Deployed 3 Sep 2026; bot scoring on cron, first batch 33 roles.
 - Phase 1b: Adzuna, RSS and LinkedIn sources, cross-source merge, agency tag and direct-only toggle. Deployed 3 Sep 2026.
 - Phase 2a: `POST /api/sync/status` with fuzzy matching for the inbox sweep; expandable cards with gaps and ad text; deep link `?role=`. Deployed 3 Sep 2026. Sweep wired via Claude Box `arkadia_run_command`; first live run matched 1, and unmatched applied roles now create placeholder records (source `inbox`). Batch score response carries `above_threshold`.
+- Phase 3a: documents. Draft CV or cover note per role; bot drafts from the base CV for the role's track. Built 3 Sep 2026. Bot task in `bot/draft-documents.md`. PDF export included (`GET /api/documents/{id}.pdf`, markdown rendered through WeasyPrint with a CV stylesheet). DOCX and edit-in-place are 3b.
 - Decision: no LLM in the app. Scoring and documents are done by the Claude Code bot on ark-agent-01 (Max subscription) via the API. See `bot/score-roles.md`.
 
 ## Goals (v0.1)
@@ -146,8 +147,8 @@ Stored in the DB but exportable and importable as a file so it can be edited out
 - Weekly digest
 
 ### Phase 3: documents
-- "Draft CV" and "Draft cover note" per role: master profile plus job description in, markdown out, editable in UI, export to PDF and DOCX
-- Bot hand-off: an endpoint `POST /roles/{id}/handoff` that writes a task file the Claude Code bot can pick up for a fuller tailored CV session
+- 3a (done): `POST /api/roles/{id}/documents {kind}` queues a request; `GET /api/queue/documents` gives the bot the role, ad, score, gaps, profile and the base CV for the track; `PUT /api/documents/{id}` returns markdown. Card shows drafting / view / copy / redo. Profile page holds the two base CVs.
+- 3b: DOCX and PDF export of a ready document, server-side. Edit-in-place before export.
 
 ### Phase 4: research
 - Per role: company brief from web search (size, sector, recent news, Glassdoor sentiment, Companies House filing summary, likely tech stack from job ads and engineering blogs). Cached, regenerated on demand.

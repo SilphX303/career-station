@@ -26,6 +26,8 @@ Dockerfile build from GitHub. Add a named volume `career-data` mounted at `/data
 
 - `POST /api/sync/status` `{"source":"inbox","items":[{"company":"..","title":"..","state":"applied","note":".."}]}` fuzzy-matches inbox findings to roles
 
-Scoring is done by the Claude Code bot, see `bot/score-roles.md`.
+- `POST /api/roles/{id}/documents` `{"kind":"cv"|"cover"}` queue a draft; `GET /api/queue/documents` for the bot; `PUT /api/documents/{id}` result
+
+Scoring and drafting are done by the Claude Code bot, see `bot/score-roles.md` and `bot/draft-documents.md`.
 
 Plan and phases: see `career-station-plan.md`.

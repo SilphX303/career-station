@@ -12,12 +12,14 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
   const [floor, setFloor] = useState('')
   const [thr, setThr] = useState('')
   const [md, setMd] = useState('')
+  const [cve, setCve] = useState('')
+  const [cvm, setCvm] = useState('')
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
     api.profile().then((x) => {
-      setP(x); setMd(x.markdown); setTerms(lines(x.search_terms)); setLocs(lines(x.filters.locations))
+      setP(x); setMd(x.markdown); setCve(x.cv_engineer); setCvm(x.cv_management); setTerms(lines(x.search_terms)); setLocs(lines(x.filters.locations))
       setExcl(lines(x.filters.exclude_terms)); setFloor(String(x.filters.salary_floor ?? '')); setThr(String(x.threshold))
     }).catch((e) => setErr(String(e)))
   }, [])
@@ -25,7 +27,7 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
   async function save() {
     try {
       await api.saveProfile({
-        markdown: md, search_terms: split(terms), threshold: Number(thr) || 75,
+        markdown: md, cv_engineer: cve, cv_management: cvm, search_terms: split(terms), threshold: Number(thr) || 75,
         filters: { salary_floor: Number(floor) || undefined, locations: split(locs), exclude_terms: split(excl) },
       })
       setSaved(true); setTimeout(() => setSaved(false), 1500)
@@ -46,6 +48,14 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-sm">Base CV, engineer track (markdown)</span>
+          <textarea value={cve} onChange={(e) => setCve(e.target.value)} rows={10} className={`${box} font-mono text-xs leading-relaxed`} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm">Base CV, management track (markdown)</span>
+          <textarea value={cvm} onChange={(e) => setCvm(e.target.value)} rows={10} className={`${box} font-mono text-xs leading-relaxed`} />
+        </label>
         <label className="block">
           <span className="mb-1 block text-sm">Search terms, one per line</span>
           <textarea value={terms} onChange={(e) => setTerms(e.target.value)} rows={8} className={box} />

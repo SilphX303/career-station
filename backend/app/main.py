@@ -6,11 +6,11 @@ from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import crawl, db, notify, sync
+from . import crawl, db, notify, render, sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -64,8 +64,20 @@ class SyncIn(BaseModel):
     source: str = "inbox"
 
 
+class DocRequest(BaseModel):
+    kind: str  # cv | cover
+
+
+class DocResult(BaseModel):
+    content: str
+    status: str = "ready"  # ready | failed
+    model: str | None = None
+
+
 class ProfileIn(BaseModel):
     markdown: str | None = None
+    cv_engineer: str | None = None
+    cv_management: str | None = None
     search_terms: list[str] | None = None
     filters: dict | None = None
     threshold: int | None = None
@@ -254,6 +266,90 @@ def _placeholder_role(con, it: "SyncItem", source: str, ts: str) -> dict:
     return {"id": cur.lastrowid, "company": it.company, "title": title, "state": None}
 
 
+DOC_KINDS = {"cv", "cover"}
+
+
+@app.post("/api/roles/{role_id}/documents")
+def request_document(role_id: int, body: DocRequest):
+    if body.kind not in DOC_KINDS:
+        raise HTTPException(400, "kind must be cv or cover")
+    con = db.connect()
+    if not con.execute("SELECT 1 FROM roles WHERE id=?", (role_id,)).fetchone():
+        con.close()
+        raise HTTPException(404)
+    pending = con.execute("SELECT id FROM documents WHERE role_id=? AND kind=? AND status='pending'", (role_id, body.kind)).fetchone()
+    if pending:
+        con.close()
+        return {"id": pending["id"], "status": "pending", "already": True}
+    with con:
+        cur = con.execute("INSERT INTO documents (role_id, kind, status, requested_at) VALUES (?,?,'pending',?)", (role_id, body.kind, db.now()))
+    con.close()
+    return {"id": cur.lastrowid, "status": "pending"}
+
+
+@app.get("/api/roles/{role_id}/documents")
+def list_documents(role_id: int):
+    con = db.connect()
+    rows = [dict(r) for r in con.execute(
+        "SELECT id, kind, status, content, requested_at, generated_at, model FROM documents WHERE role_id=? ORDER BY id DESC", (role_id,))]
+    con.close()
+    return rows
+
+
+@app.get("/api/documents/{doc_id}.pdf")
+def document_pdf(doc_id: int):
+    con = db.connect()
+    d = con.execute(
+        """SELECT d.kind, d.status, d.content, r.company, r.title FROM documents d JOIN roles r ON r.id=d.role_id WHERE d.id=?""",
+        (doc_id,)).fetchone()
+    con.close()
+    if not d:
+        raise HTTPException(404)
+    if d["status"] != "ready" or not d["content"]:
+        raise HTTPException(409, "document not ready")
+    pdf = render.to_pdf(d["content"])
+    name = render.filename(d["kind"], d["company"], d["title"])
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/api/queue/documents")
+def queue_documents(limit: int = 5):
+    """For the drafting bot. Each item carries everything needed: role, ad, score, profile, base CV for the track."""
+    con = db.connect()
+    prof = get_profile()
+    items = []
+    for d in con.execute("SELECT * FROM documents WHERE status='pending' ORDER BY requested_at LIMIT ?", (limit,)):
+        r = con.execute(
+            """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.url, r.description,
+                      sc.score, sc.reasons, sc.gaps, sc.track FROM roles r
+               LEFT JOIN scores sc ON sc.role_id=r.id WHERE r.id=?""", (d["role_id"],)).fetchone()
+        role = dict(r)
+        role["reasons"] = json.loads(role["reasons"]) if role.get("reasons") else []
+        role["gaps"] = json.loads(role["gaps"]) if role.get("gaps") else []
+        track = role.get("track") or "engineer"
+        items.append({
+            "document_id": d["id"], "kind": d["kind"], "track": track, "role": role,
+            "base_cv": prof["cv_management"] if track == "management" else prof["cv_engineer"],
+        })
+    con.close()
+    return {"profile": prof["markdown"], "items": items}
+
+
+@app.put("/api/documents/{doc_id}")
+def put_document(doc_id: int, body: DocResult):
+    if body.status not in ("ready", "failed"):
+        raise HTTPException(400, "status must be ready or failed")
+    con = db.connect()
+    if not con.execute("SELECT 1 FROM documents WHERE id=?", (doc_id,)).fetchone():
+        con.close()
+        raise HTTPException(404)
+    with con:
+        con.execute("UPDATE documents SET content=?, status=?, generated_at=?, model=? WHERE id=?",
+                    (body.content, body.status, db.now(), body.model, doc_id))
+    con.close()
+    return {"ok": True}
+
+
 @app.get("/api/sources")
 def sources():
     con = db.connect()
@@ -285,10 +381,12 @@ def put_profile(body: ProfileIn):
     terms = body.search_terms if body.search_terms is not None else cur["search_terms"]
     filt = body.filters if body.filters is not None else cur["filters"]
     thr = body.threshold if body.threshold is not None else cur["threshold"]
+    cve = body.cv_engineer if body.cv_engineer is not None else cur["cv_engineer"]
+    cvm = body.cv_management if body.cv_management is not None else cur["cv_management"]
     with con:
         con.execute(
-            "UPDATE profile SET markdown=?, search_terms=?, filters=?, threshold=?, updated_at=? WHERE id=1",
-            (md, json.dumps(terms), json.dumps(filt), thr, db.now()),
+            "UPDATE profile SET markdown=?, search_terms=?, filters=?, threshold=?, cv_engineer=?, cv_management=?, updated_at=? WHERE id=1",
+            (md, json.dumps(terms), json.dumps(filt), thr, cve, cvm, db.now()),
         )
     con.close()
     return get_profile()
