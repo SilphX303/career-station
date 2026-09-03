@@ -11,7 +11,7 @@ Sibling of cupid-station and Arkadia Forge. Same stack, same dev loop, same depl
 - Phase 0: done, deployed on Coolify (HV02), Reed returning results. 3 Sep 2026.
 - Phase 1a: filters, profile page, scoring queue and score endpoint, Discord notify on score. Deployed 3 Sep 2026; bot scoring on cron, first batch 33 roles.
 - Phase 1b: Adzuna, RSS and LinkedIn sources, cross-source merge, agency tag and direct-only toggle. Deployed 3 Sep 2026.
-- Phase 2a: `POST /api/sync/status` with fuzzy matching for the inbox sweep; expandable cards with gaps and ad text; deep link `?role=`. Built 3 Sep 2026. Sweep wiring depends on Claude Box run tool.
+- Phase 2a: `POST /api/sync/status` with fuzzy matching for the inbox sweep; expandable cards with gaps and ad text; deep link `?role=`. Deployed 3 Sep 2026. Sweep wired via Claude Box `arkadia_run_command`; first live run matched 1, and unmatched applied roles now create placeholder records (source `inbox`). Batch score response carries `above_threshold`.
 - Decision: no LLM in the app. Scoring and documents are done by the Claude Code bot on ark-agent-01 (Max subscription) via the API. See `bot/score-roles.md`.
 
 ## Goals (v0.1)

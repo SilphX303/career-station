@@ -175,7 +175,7 @@ export default function App() {
                   {detail && (
                     <div>
                       <p className="mb-1 text-xs uppercase tracking-wide text-muted">The ad</p>
-                      <p className="whitespace-pre-line leading-relaxed text-paper/80">{detail.description || 'No description captured for this one; open the ad.'}</p>
+                      <p className="whitespace-pre-line leading-relaxed text-paper/80">{detail.description || (r.url ? 'No description captured for this one; open the ad.' : 'Added from the inbox sweep; no ad on file.')}</p>
                     </div>
                   )}
                 </div>
@@ -188,7 +188,7 @@ export default function App() {
                   <button onClick={() => act(r.id, 'applied')} className="text-paper hover:underline">Applied</button>
                 )}
                 {r.filtered !== 1 && <button onClick={() => act(r.id, 'dismissed')} className="text-muted hover:underline">Not for me</button>}
-                <a href={r.url} target="_blank" rel="noreferrer" className="text-muted hover:underline">Open ad</a>
+                {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-muted hover:underline">Open ad</a>}
                 <span className="ml-auto text-xs text-muted">{r.source}, {ago(r.first_seen)}</span>
               </div>
             </div>

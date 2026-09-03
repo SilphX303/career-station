@@ -187,15 +187,19 @@ async def put_score(role_id: int, body: ScoreIn):
 @app.post("/api/scores/batch")
 async def post_scores_batch(body: BatchIn):
     """Bot submits a whole batch in one call. Each item is scored independently; bad ones are reported, not fatal."""
-    ok, failed, notified = [], [], 0
+    ok, failed, notified, above = [], [], 0, 0
+    con = db.connect()
+    thr = con.execute("SELECT threshold FROM profile WHERE id=1").fetchone()["threshold"]
+    con.close()
     for item in body.scores:
         try:
             r = await put_score(item.role_id, ScoreIn(**item.model_dump(exclude={"role_id"})))
             ok.append(item.role_id)
             notified += int(bool(r.get("notified")))
+            above += int(item.score >= thr)
         except HTTPException as e:
             failed.append({"role_id": item.role_id, "why": e.detail})
-    return {"scored": len(ok), "failed": failed, "notified": notified}
+    return {"scored": len(ok), "above_threshold": above, "failed": failed, "notified": notified}
 
 
 @app.post("/api/sync/status")
@@ -205,7 +209,7 @@ def sync_status(body: SyncIn):
     con = db.connect()
     roles = [dict(r) for r in con.execute(
         "SELECT r.id, r.company, r.title, st.state FROM roles r LEFT JOIN status st ON st.role_id=r.id")]
-    matched, unmatched = [], []
+    matched, unmatched, created = [], [], []
     ts = db.now()
     with con:
         for it in body.items:
@@ -213,6 +217,11 @@ def sync_status(body: SyncIn):
                 unmatched.append({**it.model_dump(), "why": "bad state"})
                 continue
             role, conf = sync.best_match(it.company, it.title, roles)
+            if not role and it.state in ("applied", "progressing"):
+                role = _placeholder_role(con, it, body.source, ts)
+                roles.append(role)
+                created.append({"role_id": role["id"], "title": role["title"], "company": role["company"], "state": it.state})
+                conf = 1.0
             if not role:
                 unmatched.append({**it.model_dump(), "why": f"no match ({conf:.2f})"})
                 continue
@@ -228,7 +237,21 @@ def sync_status(body: SyncIn):
             role["state"] = it.state
             matched.append({"role_id": role["id"], "title": role["title"], "state": it.state, "confidence": round(conf, 2)})
     con.close()
-    return {"matched": matched, "unmatched": unmatched}
+    return {"matched": matched, "created": created, "unmatched": unmatched}
+
+
+def _placeholder_role(con, it: "SyncItem", source: str, ts: str) -> dict:
+    """An application made outside the app (direct approach, agency). Record it so the pipeline is complete."""
+    con.execute("INSERT OR IGNORE INTO sources (name, kind, enabled) VALUES (?, 'manual', 0)", (source,))
+    sid = con.execute("SELECT id FROM sources WHERE name=?", (source,)).fetchone()["id"]
+    title = it.title or "Role (title unknown)"
+    import hashlib
+    h = hashlib.sha1(f"{source}|{it.company}|{title}|{ts}".encode()).hexdigest()
+    cur = con.execute(
+        """INSERT INTO roles (source_id, external_id, url, title, company, location, remote_flag,
+           first_seen, last_seen, hash, filtered) VALUES (?,?,?,?,?,?,0,?,?,?,0)""",
+        (sid, None, "", title, it.company, None, ts, ts, h))
+    return {"id": cur.lastrowid, "company": it.company, "title": title, "state": None}
 
 
 @app.get("/api/sources")

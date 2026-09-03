@@ -15,4 +15,4 @@ Then run on the Claude Box (arkadia_run_command):
       -H 'content-type: application/json' \
       -d '{"source":"inbox","items":[{"company":"...","title":"...","state":"...","note":"..."}]}'
 
-Read the response. Anything in `unmatched` is a role career-station has not seen (probably applied via a direct approach). Mention those to Steve in one line so he can add them by hand if he wants; do not list rejections individually in that line, just "2 rejections couldn't be matched" is enough.
+Read the response. `matched` are updates to roles the app already had. `created` are applied or progressing roles the app had never seen (direct approaches, agency postings); it has recorded them so the pipeline is complete. `unmatched` are rejections or declines it could not place; report those as a count only.
