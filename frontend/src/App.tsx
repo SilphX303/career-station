@@ -129,6 +129,7 @@ export default function App() {
                             <span className="lcars-code shrink-0 text-lavender">{[r.doc_cv === 'ready' && 'CV', r.doc_cover === 'ready' && 'CN'].filter(Boolean).join('+')}</span>
                           )}
                           {(r.doc_cv === 'pending' || r.doc_cover === 'pending') && <span className="alive-dot shrink-0" />}
+                          {r.desc_quality === 'partial' && <span className="lcars-code shrink-0 text-amber/70">PARTIAL</span>}
                         </div>
                         <div className="truncate text-xs text-dim">
                           {isAgency(r) && <span className="lcars-code mr-1.5">AGY</span>}

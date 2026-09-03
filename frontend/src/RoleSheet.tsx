@@ -16,6 +16,8 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
   const [copied, setCopied] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [dragY, setDragY] = useState(0)
+  const [loadingAd, setLoadingAd] = useState(false)
+  const [rescored, setRescored] = useState(false)
   const startY = useRef<number | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
 
@@ -58,6 +60,18 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
   function onTouchEnd() {
     if (dragY > 110) onClose()
     setDragY(0); startY.current = null
+  }
+
+  async function loadAd() {
+    setLoadingAd(true)
+    try {
+      const r = await api.loadDescription(role.id)
+      setDetail((d) => d ? { ...d, description: r.description, truncated: r.truncated } : d)
+      if (!r.ok) setErr('Could not fetch more of this ad; open it on the board.')
+    } catch (e) { setErr(String(e)) } finally { setLoadingAd(false) }
+  }
+  async function rescore() {
+    try { await api.rescore(role.id); setRescored(true) } catch (e) { setErr(String(e)) }
   }
 
   async function draft(kind: 'cv' | 'cover') {
@@ -190,6 +204,19 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
             {detail && (
               <div className="lcars-prose">
                 {detail.description || (role.url ? 'No description captured for this one; open the ad.' : 'Added from the inbox sweep; no ad on file.')}
+              </div>
+            )}
+            {detail?.truncated && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="lcars-code text-amber/80">Partial ad{detail.desc_reason ? `: ${detail.desc_reason}` : ''}</span>
+                <button onClick={loadAd} disabled={loadingAd} className="lcars-btn">{loadingAd ? 'Loading' : 'Load full ad'}</button>
+              </div>
+            )}
+            {detail && !detail.truncated && role.score != null && (
+              <div className="mt-3">
+                {rescored
+                  ? <span className="lcars-code text-lavender">Queued for rescoring; the bot picks it up within the hour</span>
+                  : <button onClick={rescore} className="lcars-btn lcars-btn-quiet">Rescore with full ad</button>}
               </div>
             )}
           </section>

@@ -19,6 +19,7 @@ export type Role = {
   filter_reason: string | null
   doc_cv?: string | null
   doc_cover?: string | null
+  desc_quality?: string | null
 }
 
 export type Doc = {
@@ -40,7 +41,7 @@ export type Profile = {
   updated_at: string
 }
 
-export type RoleDetail = Role & { description: string | null; gaps: string[]; note: string | null }
+export type RoleDetail = Role & { description: string | null; gaps: string[]; note: string | null; truncated?: boolean; desc_reason?: string | null }
 
 export type SourceHealth = {
   id: number
@@ -66,6 +67,8 @@ export const api = {
     j<{ ok: boolean }>(fetch(`/api/roles/${id}/status`, {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state }),
     })),
+  loadDescription: (id: number) => j<{ ok: boolean; description: string | null; truncated: boolean }>(fetch(`/api/roles/${id}/description`, { method: 'POST' })),
+  rescore: (id: number) => j<{ ok: boolean }>(fetch(`/api/roles/${id}/score`, { method: 'DELETE' })),
   docs: (id: number) => j<Doc[]>(fetch(`/api/roles/${id}/documents`)),
   requestDoc: (id: number, kind: 'cv' | 'cover') =>
     j<{ id: number; status: string }>(fetch(`/api/roles/${id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) })),

@@ -26,6 +26,13 @@ JOBS = [
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path.startswith("/jobs/"):
+            jid = int(u.path.rsplit("/", 1)[1])
+            j = next((x for x in JOBS if x["jobId"] == jid), None)
+            full = dict(j or {})
+            full["jobDescription"] = "<p><strong>About the role</strong></p><p>" + (j["jobDescription"] if j else "") + "</p><ul><li>Own Intune and Entra end to end</li><li>Autopilot rollout across 1,200 devices</li><li>Hybrid: two days in Brighton</li></ul><p>Salary &pound;70,000 to &pound;80,000 plus bonus.</p>" * 3
+            body = json.dumps(full).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body); return
         kw = parse_qs(u.query).get("keywords", [""])[0].lower()
         hits = [j for j in JOBS if any(w in j["jobTitle"].lower() for w in kw.split())]
         body = json.dumps({"results": hits, "totalResults": len(hits)}).encode()

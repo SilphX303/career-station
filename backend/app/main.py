@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import crawl, db, notify, render, sync
+from . import crawl, db, fulltext, notify, render, sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -92,7 +92,7 @@ def health():
 def list_roles(state: str | None = None, limit: int = 200):
     con = db.connect()
     q = """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
-                  r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, s.name AS source,
+                  r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, r.desc_quality, s.name AS source,
                   sc.score, sc.reasons, sc.track, st.state,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cv' ORDER BY d.id DESC LIMIT 1) AS doc_cv,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover
@@ -132,6 +132,9 @@ def get_role(role_id: int):
     d = dict(r)
     d["reasons"] = json.loads(d["reasons"]) if d.get("reasons") else []
     d["gaps"] = json.loads(d["gaps"]) if d.get("gaps") else []
+    q, why = fulltext.assess(d.get("description"))
+    d["truncated"] = q == "partial" and bool(d.get("url"))
+    d["desc_reason"] = why
     return d
 
 
@@ -160,11 +163,14 @@ def queue_unscored(limit: int = 40):
     prof = get_profile()
     rows = [dict(r) for r in con.execute(
         """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
-                  r.url, r.description, r.posted_at
+                  r.url, r.description, r.posted_at, r.desc_quality, r.desc_reason
            FROM roles r LEFT JOIN scores sc ON sc.role_id = r.id LEFT JOIN status st ON st.role_id = r.id
            WHERE r.filtered = 0 AND sc.role_id IS NULL
              AND (st.state IS NULL OR st.state NOT IN ('dismissed','rejected','declined'))
            ORDER BY r.first_seen DESC LIMIT ?""", (limit,))]
+    for r in rows:
+        r["partial_ad"] = r.pop("desc_quality") == "partial"
+        r["partial_reason"] = r.pop("desc_reason")
     con.close()
     return {"profile": prof["markdown"], "threshold": prof["threshold"], "roles": rows}
 
@@ -348,6 +354,33 @@ def put_document(doc_id: int, body: DocResult):
     with con:
         con.execute("UPDATE documents SET content=?, status=?, generated_at=?, model=? WHERE id=?",
                     (body.content, body.status, db.now(), body.model, doc_id))
+    con.close()
+    return {"ok": True}
+
+
+@app.post("/api/roles/{role_id}/description")
+async def load_description(role_id: int):
+    """Fetch the full ad on demand."""
+    con = db.connect()
+    r = con.execute("SELECT r.id, r.external_id, r.url, r.description, s.name AS source FROM roles r JOIN sources s ON s.id=r.source_id WHERE r.id=?", (role_id,)).fetchone()
+    if not r:
+        con.close()
+        raise HTTPException(404)
+    result = await crawl.fill_descriptions(con, [(r["id"], r["source"], r["external_id"], r["url"])], dict(os.environ), cap=1)
+    desc = con.execute("SELECT description FROM roles WHERE id=?", (role_id,)).fetchone()["description"]
+    q, why = fulltext.assess(desc)
+    with con:
+        con.execute("UPDATE roles SET desc_quality=?, desc_reason=? WHERE id=?", (q, why, role_id))
+    con.close()
+    return {"ok": result["filled"] == 1, "description": desc, "truncated": q == "partial", "reason": why}
+
+
+@app.delete("/api/roles/{role_id}/score")
+def rescore(role_id: int):
+    """Drop the score so the bot picks the role up again (e.g. after the full ad was loaded)."""
+    con = db.connect()
+    with con:
+        con.execute("DELETE FROM scores WHERE role_id=?", (role_id,))
     con.close()
     return {"ok": True}
 

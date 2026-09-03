@@ -51,7 +51,8 @@ def _migrate(con: sqlite3.Connection) -> None:
     New columns go in BOTH schema.sql and this dict."""
     wanted = {
         "roles": {"salary_text": "TEXT", "remote_flag": "INTEGER NOT NULL DEFAULT 0",
-                  "filtered": "INTEGER NOT NULL DEFAULT 0", "filter_reason": "TEXT"},
+                  "filtered": "INTEGER NOT NULL DEFAULT 0", "filter_reason": "TEXT",
+                  "desc_quality": "TEXT", "desc_reason": "TEXT"},
         "sources": {"last_error": "TEXT"},
         "scores": {"track": "TEXT"},
         "profile": {"cv_engineer": "TEXT NOT NULL DEFAULT ''", "cv_management": "TEXT NOT NULL DEFAULT ''"},

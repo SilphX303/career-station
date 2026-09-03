@@ -1,10 +1,13 @@
 """Run every enabled source, upsert roles, record source health."""
+import asyncio
 import json
 import logging
 import os
 
+import httpx
+
 from . import db
-from . import filters
+from . import filters, fulltext
 from .sources import REGISTRY
 
 log = logging.getLogger("career.crawl")
@@ -17,6 +20,7 @@ async def run_all() -> dict:
     filt = json.loads(prof["filters"]) if prof else {}
     env = dict(os.environ)
     summary = {}
+    to_fill: list[tuple[int, str, str | None, str]] = []
     for name, cls in REGISTRY.items():
         con.execute("INSERT OR IGNORE INTO sources (name, kind) VALUES (?, ?)", (name, cls.kind))
         row = con.execute("SELECT id, enabled FROM sources WHERE name=?", (name,)).fetchone()
@@ -40,16 +44,19 @@ async def run_all() -> dict:
                         (ts, r.description, r.salary_min, r.salary_max, exists["id"]))
                     continue
                 fl, why = filters.apply(r.__dict__, filt)
+                dq, dr = fulltext.assess(r.description)
                 cur = con.execute(
                     """INSERT INTO roles (source_id, external_id, url, title, company, location, remote_flag,
                        salary_min, salary_max, salary_text, description, posted_at, first_seen, last_seen, hash,
-                       filtered, filter_reason)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       filtered, filter_reason, desc_quality, desc_reason)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (row["id"], r.external_id, r.url, r.title, r.company, r.location, int(r.remote_flag),
-                     r.salary_min, r.salary_max, r.salary_text, r.description, r.posted_at, ts, ts, h, int(fl), why),
+                     r.salary_min, r.salary_max, r.salary_text, r.description, r.posted_at, ts, ts, h, int(fl), why, dq, dr),
                 )
                 con.execute("INSERT OR IGNORE INTO status (role_id, state, changed_at) VALUES (?, 'new', ?)", (cur.lastrowid, ts))
                 new += 1
+                if not fl and dq == "partial":
+                    to_fill.append((cur.lastrowid, name, r.external_id, r.url))
             not_set = bool(src.error) and ("not set" in src.error or "disabled" in src.error)
             con.execute(
                 "UPDATE sources SET last_run=?, last_ok=?, last_error=? WHERE id=?",
@@ -57,5 +64,33 @@ async def run_all() -> dict:
             )
         summary[name] = {"fetched": len(roles), "new": new, "error": src.error}
         log.info("%s: fetched=%d new=%d error=%s", name, len(roles), new, src.error)
+    filled = await fill_descriptions(con, to_fill, env)
+    summary["fulltext"] = filled
     con.close()
     return summary
+
+
+async def fill_descriptions(con, items, env, cap: int = 60) -> dict:
+    """Replace stub descriptions with the full ad before scoring. Best effort; never raises."""
+    ok = skipped = failed = 0
+    reed_base = env.get("CAREER_REED_BASE", "https://www.reed.co.uk/api/1.0")
+    reed_key = env.get("CAREER_REED_KEY")
+    async with httpx.AsyncClient(auth=(reed_key, "") if reed_key else None, timeout=25) as reed_client:
+        for rid, source, ext, url in items[:cap]:
+            try:
+                if source == "reed" and ext and reed_key:
+                    text = fulltext.clean_reed(await fulltext.reed_full(reed_client, reed_base, ext))
+                else:
+                    text = await fulltext.fetch_url(url)
+                if text and len(text) > 300:
+                    dq, dr = fulltext.assess(text)
+                    with con:
+                        con.execute("UPDATE roles SET description=?, desc_quality=?, desc_reason=? WHERE id=?", (text, dq, dr, rid))
+                    ok += 1
+                else:
+                    skipped += 1
+                await asyncio.sleep(0.4)
+            except Exception as e:  # noqa: BLE001
+                failed += 1
+                log.info("fulltext %s %s: %s", source, rid, e)
+    return {"filled": ok, "skipped": skipped, "failed": failed, "queued": len(items)}

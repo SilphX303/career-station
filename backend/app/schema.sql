@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS roles (
   last_seen TEXT NOT NULL,
   hash TEXT UNIQUE NOT NULL,
   filtered INTEGER NOT NULL DEFAULT 0,
-  filter_reason TEXT
+  filter_reason TEXT,
+  desc_quality TEXT,
+  desc_reason TEXT
 );
 CREATE TABLE IF NOT EXISTS scores (
   role_id INTEGER PRIMARY KEY REFERENCES roles(id),
