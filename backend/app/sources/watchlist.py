@@ -143,30 +143,65 @@ def slug_candidates(name: str) -> list[str]:
         return []
     joined = "".join(words)
     hyph = "-".join(words)
-    first = words[0]
-    out = [joined, hyph, first]
+    out = [joined, hyph]
     if len(words) > 1:
         out.append(words[0] + words[1][:3])  # octoenergy-style abbreviations
     return list(dict.fromkeys(x for x in out if x))
+
+
+def _name_matches(entered: str, found: str | None) -> bool:
+    """The feed's own company name must agree with what Steve typed. 'Stealth Game Studio' vs 'Stealth Startup Jobs' fails."""
+    if not found:
+        return False
+    a = set(re.sub(r"[^a-z0-9 ]+", " ", entered.lower()).split())
+    b = set(re.sub(r"[^a-z0-9 ]+", " ", found.lower()).split())
+    stop = {"ltd", "limited", "plc", "inc", "group", "jobs", "careers", "the", "at", "uk"}
+    a, b = a - stop, b - stop
+    if not a or not b:
+        return False
+    return len(a & b) / len(a) >= 0.6
 
 
 async def resolve_feed(name: str, env: dict) -> str | None:
     """Try the public ATS feeds for a company name. Returns a careers URL or None. No scraping."""
     gh = env.get("CAREER_GH_BASE", "https://boards-api.greenhouse.io")
     lv = env.get("CAREER_LEVER_BASE", "https://api.lever.co")
+    cands = slug_candidates(name)
+    exact = set(cands[:2])  # joined and hyphenated only; abbreviations need a name check
     async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "career-station/1.0"}, follow_redirects=True) as c:
-        for slug in slug_candidates(name):
-            checks = [
-                (f"{gh}/v1/boards/{slug}/jobs", f"https://boards.greenhouse.io/{slug}", lambda j: bool(j.get("jobs"))),
-                (f"{lv}/v0/postings/{slug}?mode=json", f"https://jobs.lever.co/{slug}", lambda j: isinstance(j, list) and len(j) > 0),
-                (f"https://api.ashbyhq.com/posting-api/job-board/{slug}", f"https://jobs.ashbyhq.com/{slug}", lambda j: bool(j.get("jobs"))),
-                (f"https://apply.workable.com/api/v1/widget/accounts/{slug}", f"https://apply.workable.com/{slug}", lambda j: bool(j.get("jobs"))),
-            ]
-            for api, public, ok in checks:
+        for slug in cands:
+            # Greenhouse: board endpoint carries the company name
+            try:
+                r = await c.get(f"{gh}/v1/boards/{slug}")
+                if r.status_code == 200 and _name_matches(name, r.json().get("name")):
+                    j = await c.get(f"{gh}/v1/boards/{slug}/jobs")
+                    if j.status_code == 200 and j.json().get("jobs") is not None:
+                        return f"https://boards.greenhouse.io/{slug}"
+            except Exception:  # noqa: BLE001
+                pass
+            # Ashby: jobs carry organizationName
+            try:
+                r = await c.get(f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
+                if r.status_code == 200:
+                    jobs = r.json().get("jobs") or []
+                    org = jobs[0].get("organizationName") if jobs else None
+                    if jobs and _name_matches(name, org):
+                        return f"https://jobs.ashbyhq.com/{slug}"
+            except Exception:  # noqa: BLE001
+                pass
+            # Workable: widget carries the account name
+            try:
+                r = await c.get(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
+                if r.status_code == 200 and _name_matches(name, r.json().get("name")) and r.json().get("jobs"):
+                    return f"https://apply.workable.com/{slug}"
+            except Exception:  # noqa: BLE001
+                pass
+            # Lever: no company name in the feed, so only the exact slugs count
+            if slug in exact:
                 try:
-                    r = await c.get(api)
-                    if r.status_code == 200 and ok(r.json()):
-                        return public
+                    r = await c.get(f"{lv}/v0/postings/{slug}?mode=json")
+                    if r.status_code == 200 and isinstance(r.json(), list) and r.json():
+                        return f"https://jobs.lever.co/{slug}"
                 except Exception:  # noqa: BLE001
-                    continue
+                    pass
     return None

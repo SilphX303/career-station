@@ -8,7 +8,14 @@ GH = {"jobs": [
 LV = [{"id": "abc", "text": "IT Manager", "hostedUrl": "https://jobs.lever.co/octoenergy/abc", "categories": {"location": "London", "commitment": "Full-time"}, "descriptionPlain": "Lead IT for 2,000 people. Responsibilities include identity, endpoints and vendor management. Hybrid two days. " * 8}]
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
-        body = json.dumps(GH if "greenhouse" in self.path or "/v1/boards" in self.path else LV).encode()
+        if self.path.rstrip("/").endswith("/v1/boards/monzo"):
+            body = json.dumps({"name": "Monzo Bank"}).encode()
+        elif self.path.rstrip("/").endswith("/v1/boards/stealth"):
+            body = json.dumps({"name": "Stealth Startup Jobs"}).encode()
+        elif "/v1/boards/" in self.path:
+            body = json.dumps(GH if "monzo" in self.path or "stealth" in self.path else {"jobs": []}).encode()
+        else:
+            body = json.dumps(LV).encode()
         self.send_response(200); self.send_header("Content-Type","application/json"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     def log_message(self,*a): pass
 if __name__ == "__main__":
