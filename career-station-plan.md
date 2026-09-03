@@ -117,7 +117,9 @@ Single page, mobile-first (Steve will mostly use this on his phone):
 
 ## Master profile
 
-A markdown file the LLM reads for scoring and (v0.2) for CV generation. Seed from the existing CVs and the job-search notes. Sections: summary, roles and outcomes, stacks (identity, endpoint, cloud, automation), scale numbers, what I want, what I will not do, salary floor, location constraints.
+One document, three parts: a shared core (who, scale, stacks, constraints), an Engineer track section, and a Management track section. The bot decides a role's track from the ad and scores against that section; `scores.track` is stored and shown as a tag. Phase 3 picks the CV to draft from by track.
+
+A markdown file the bot reads for scoring and (Phase 3) for CV generation. Seed from the existing CVs and the job-search notes. Sections: summary, roles and outcomes, stacks (identity, endpoint, cloud, automation), scale numbers, what I want, what I will not do, salary floor, location constraints.
 
 Stored in the DB but exportable and importable as a file so it can be edited outside the app.
 

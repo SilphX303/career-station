@@ -41,6 +41,7 @@ class ScoreIn(BaseModel):
     reasons: list[str] = []
     gaps: list[str] = []
     model: str | None = None
+    track: str | None = None
 
 
 class ProfileIn(BaseModel):
@@ -60,7 +61,7 @@ def list_roles(state: str | None = None, limit: int = 200):
     con = db.connect()
     q = """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
                   r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, s.name AS source,
-                  sc.score, sc.reasons, st.state
+                  sc.score, sc.reasons, sc.track, st.state
            FROM roles r
            JOIN sources s ON s.id = r.source_id
            LEFT JOIN scores sc ON sc.role_id = r.id
@@ -87,7 +88,7 @@ def list_roles(state: str | None = None, limit: int = 200):
 def get_role(role_id: int):
     con = db.connect()
     r = con.execute(
-        """SELECT r.*, s.name AS source, sc.score, sc.reasons, sc.gaps, st.state, st.note
+        """SELECT r.*, s.name AS source, sc.score, sc.reasons, sc.gaps, sc.track, st.state, st.note
            FROM roles r JOIN sources s ON s.id=r.source_id
            LEFT JOIN scores sc ON sc.role_id=r.id LEFT JOIN status st ON st.role_id=r.id
            WHERE r.id=?""", (role_id,)).fetchone()
@@ -146,10 +147,10 @@ async def put_score(role_id: int, body: ScoreIn):
     thr = con.execute("SELECT threshold FROM profile WHERE id=1").fetchone()["threshold"]
     with con:
         con.execute(
-            """INSERT INTO scores (role_id, score, reasons, gaps, scored_at, model) VALUES (?,?,?,?,?,?)
+            """INSERT INTO scores (role_id, score, reasons, gaps, scored_at, model, track) VALUES (?,?,?,?,?,?,?)
                ON CONFLICT(role_id) DO UPDATE SET score=excluded.score, reasons=excluded.reasons,
-               gaps=excluded.gaps, scored_at=excluded.scored_at, model=excluded.model""",
-            (role_id, body.score, json.dumps(body.reasons), json.dumps(body.gaps), db.now(), body.model),
+               gaps=excluded.gaps, scored_at=excluded.scored_at, model=excluded.model, track=excluded.track""",
+            (role_id, body.score, json.dumps(body.reasons), json.dumps(body.gaps), db.now(), body.model, body.track),
         )
     notified = False
     if body.score >= thr and not con.execute(

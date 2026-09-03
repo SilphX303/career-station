@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS scores (
   reasons TEXT NOT NULL DEFAULT '[]',
   gaps TEXT NOT NULL DEFAULT '[]',
   scored_at TEXT NOT NULL,
-  model TEXT
+  model TEXT,
+  track TEXT
 );
 CREATE TABLE IF NOT EXISTS status (
   role_id INTEGER PRIMARY KEY REFERENCES roles(id),

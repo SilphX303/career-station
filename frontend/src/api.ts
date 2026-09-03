@@ -12,6 +12,7 @@ export type Role = {
   first_seen: string
   source: string
   score: number | null
+  track: string | null
   reasons: string[]
   state: string | null
   filtered: number

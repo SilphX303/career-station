@@ -115,6 +115,11 @@ export default function App() {
             <div className="min-w-0 flex-1">
               <a href={r.url} target="_blank" rel="noreferrer" className="block font-medium leading-snug hover:underline">
                 {r.title}
+                {r.track && (
+                  <span className="ml-2 align-middle rounded border border-line px-1.5 py-px text-xs font-normal text-muted">
+                    {r.track === 'management' ? 'Mgmt' : r.track === 'engineer' ? 'Eng' : r.track}
+                  </span>
+                )}
               </a>
               <p className="text-sm text-muted">
                 {r.company ?? 'Unknown company'}

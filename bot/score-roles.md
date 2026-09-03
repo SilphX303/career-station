@@ -11,9 +11,12 @@ Env: `CAREER_URL` (e.g. http://career.arkadia.network)
    If `roles` is empty, stop.
    If `profile` is empty, stop and post to Discord: "career-station: profile is empty, nothing to score against."
 
-2. For each role, judge fit against the profile. Output strictly:
+2. For each role, first decide which track it belongs to by reading the ad, not the title:
+   - `engineer`: hands-on delivery is the core of the job (building, migrating, automating, administering)
+   - `management`: leading people or owning a function is the core (team lead, service manager, head of)
+   Then judge fit against the matching track section of the profile (the shared core applies to both). Output strictly:
    ```json
-   {"score": 0-100, "reasons": ["...", "..."], "gaps": ["..."]}
+   {"track": "engineer" | "management", "score": 0-100, "reasons": ["...", "..."], "gaps": ["..."]}
    ```
    Scoring guide:
    - 90+: stack, level, location and salary all line up; would be a strong application
@@ -23,7 +26,7 @@ Env: `CAREER_URL` (e.g. http://career.arkadia.network)
    Reasons: two short sentences, specific to this role and this profile, written so they read well on a phone card. Gaps: things to address in a cover note, or empty.
    Score fit, not "will I get it". Do not penalise unstated salary; note it as a gap.
 
-3. `PUT $CAREER_URL/api/roles/{id}/score` with the JSON above plus `"model": "<model name>"`.
+3. `PUT $CAREER_URL/api/roles/{id}/score` with the JSON above (including `track`) plus `"model": "<model name>"`.
    The app handles notifications; do not post to Discord per role.
 
 4. After the batch, log one line: `scored N roles, M above threshold`. Nothing else. Never report counts of low scores or rejections anywhere Steve reads.
