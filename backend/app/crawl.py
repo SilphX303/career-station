@@ -31,7 +31,13 @@ async def run_all() -> dict:
                 h = r.dedupe_hash()
                 exists = con.execute("SELECT id FROM roles WHERE hash=?", (h,)).fetchone()
                 if exists:
-                    con.execute("UPDATE roles SET last_seen=? WHERE id=?", (ts, exists["id"]))
+                    # Same role seen on another board: keep the record, but fill in anything the first sighting lacked
+                    con.execute(
+                        """UPDATE roles SET last_seen=?,
+                           description=COALESCE(NULLIF(description,''), ?),
+                           salary_min=COALESCE(salary_min, ?), salary_max=COALESCE(salary_max, ?)
+                           WHERE id=?""",
+                        (ts, r.description, r.salary_min, r.salary_max, exists["id"]))
                     continue
                 fl, why = filters.apply(r.__dict__, filt)
                 cur = con.execute(

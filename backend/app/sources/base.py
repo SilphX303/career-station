@@ -20,7 +20,8 @@ class RawRole:
 
     def dedupe_hash(self) -> str:
         """Same role posted on two boards collapses to one record."""
-        key = "|".join(_norm(x) for x in (self.title, self.company or "", self.location or ""))
+        loc = (self.location or "").split(",")[0]
+        key = "|".join(_norm(x) for x in (self.title, self.company or "", loc))
         return hashlib.sha1(key.encode()).hexdigest()
 
 

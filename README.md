@@ -1,6 +1,6 @@
 # career-station
 
-Finds roles, scores them against a profile, notifies on strong matches. Phase 0: Reed source, list UI, status actions.
+Finds roles, scores them against a profile, notifies on strong matches. Sources: Reed and Adzuna (APIs), RSS feeds, LinkedIn guest search (best effort). Scoring by the Claude Code bot.
 
 ## Run locally
 

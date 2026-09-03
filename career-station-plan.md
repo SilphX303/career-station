@@ -9,7 +9,8 @@ Sibling of cupid-station and Arkadia Forge. Same stack, same dev loop, same depl
 ## Status
 
 - Phase 0: done, deployed on Coolify (HV02), Reed returning results. 3 Sep 2026.
-- Phase 1a: filters, profile page, scoring queue and score endpoint, Discord notify on score. Built 3 Sep 2026, awaiting deploy.
+- Phase 1a: filters, profile page, scoring queue and score endpoint, Discord notify on score. Deployed 3 Sep 2026; bot scoring on cron, first batch 33 roles.
+- Phase 1b: Adzuna, RSS and LinkedIn sources, cross-source merge, agency tag and direct-only toggle. Built 3 Sep 2026.
 - Decision: no LLM in the app. Scoring and documents are done by the Claude Code bot on ark-agent-01 (Max subscription) via the API. See `bot/score-roles.md`.
 
 ## Goals (v0.1)
@@ -68,6 +69,8 @@ Ordered by reliability. Do not build on fragile scrapers first.
 3. CWJobs and Technojobs via RSS where available
 4. LinkedIn and Indeed: guest search pages, HTML scrape, treated as best-effort. Expect breakage. Failures must not stop the run; log and continue.
 5. Otta: no public API, defer to v0.2 or skip
+
+Cross-source merge: dedupe key is normalised title, company and the first token of location. A second sighting fills in description and salary the first lacked. Agency detection is a name heuristic in the UI (recruit, resourcing, placements, etc.) with a direct-only toggle.
 
 Each source is a class with `fetch() -> list[RawRole]`. A broken source returns empty and sets `last_ok = false`. The UI shows source health so silent failure is visible.
 

@@ -11,6 +11,15 @@ const FILTERS: { key: string; label: string }[] = [
 ]
 
 const FLOOR = 74000
+const AGENCY = /recruit|resourc|placement|staffing|talent|search|people|consultancy|personnel|appointments|selection|associates|partners/i
+
+function isAgency(r: Role) {
+  return !!r.company && AGENCY.test(r.company)
+}
+
+function joinReasons(rs: string[]) {
+  return rs.slice(0, 2).map((x) => x.trim().replace(/\.$/, '')).join('. ') + '.'
+}
 
 function money(n: number) {
   return `£${Math.round(n / 1000)}k`
@@ -37,6 +46,7 @@ function ago(iso: string) {
 export default function App() {
   const [filter, setFilter] = useState('')
   const [view, setView] = useState<'roles' | 'profile'>('roles')
+  const [directOnly, setDirectOnly] = useState(false)
   const [roles, setRoles] = useState<Role[]>([])
   const [sources, setSources] = useState<SourceHealth[]>([])
   const [busy, setBusy] = useState(false)
@@ -98,6 +108,11 @@ export default function App() {
         ))}
       </nav>
 
+      <label className="mb-3 flex items-center gap-2 text-sm text-muted">
+        <input type="checkbox" checked={directOnly} onChange={(e) => setDirectOnly(e.target.checked)} className="accent-amber" />
+        Direct employers only
+      </label>
+
       {err && <p className="mb-4 rounded border border-rust px-3 py-2 text-sm text-rust">{err}</p>}
 
       <p className="mb-2 text-sm text-muted">
@@ -105,7 +120,7 @@ export default function App() {
       </p>
 
       <ul className="divide-y divide-line border-y border-line">
-        {roles.map((r) => (
+        {roles.filter((r) => !directOnly || !isAgency(r)).map((r) => (
           <li key={r.id} className="flex gap-4 py-4">
             <div className="w-12 shrink-0 text-right">
               <span className={`tnum text-3xl font-semibold leading-none ${r.score == null ? 'text-line' : r.score >= 75 ? 'text-amber' : 'text-muted'}`}>
@@ -122,6 +137,7 @@ export default function App() {
                 )}
               </a>
               <p className="text-sm text-muted">
+                {isAgency(r) && <span className="mr-1.5 rounded bg-line px-1 py-px text-xs">Agency</span>}
                 {r.company ?? 'Unknown company'}
                 {r.location ? `, ${r.location}` : ''}
                 {r.remote_flag && !/remote/i.test(r.location ?? '') ? ' (remote)' : ''}
@@ -131,7 +147,7 @@ export default function App() {
                 <p className="mt-1 text-sm text-rust/80">Hidden: {r.filter_reason}</p>
               )}
               {r.reasons.length > 0 && (
-                <p className="mt-1 text-sm text-paper/80">{r.reasons.slice(0, 2).join('. ')}</p>
+                <p className="mt-1 text-sm text-paper/80">{joinReasons(r.reasons)}</p>
               )}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 {r.filtered !== 1 && r.state !== 'shortlisted' && (
