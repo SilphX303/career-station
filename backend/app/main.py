@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import crawl, db
+from . import crawl, db, notify
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -36,6 +36,13 @@ class StatusIn(BaseModel):
     note: str | None = None
 
 
+class ScoreIn(BaseModel):
+    score: int
+    reasons: list[str] = []
+    gaps: list[str] = []
+    model: str | None = None
+
+
 class ProfileIn(BaseModel):
     markdown: str | None = None
     search_terms: list[str] | None = None
@@ -52,7 +59,7 @@ def health():
 def list_roles(state: str | None = None, limit: int = 200):
     con = db.connect()
     q = """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
-                  r.url, r.posted_at, r.first_seen, s.name AS source,
+                  r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, s.name AS source,
                   sc.score, sc.reasons, st.state
            FROM roles r
            JOIN sources s ON s.id = r.source_id
@@ -60,11 +67,13 @@ def list_roles(state: str | None = None, limit: int = 200):
            LEFT JOIN status st ON st.role_id = r.id
            WHERE 1=1"""
     args: list = []
-    if state:
-        q += " AND st.state = ?"
+    if state == "filtered":
+        q += " AND r.filtered = 1"
+    elif state:
+        q += " AND r.filtered = 0 AND st.state = ?"
         args.append(state)
     else:
-        q += " AND (st.state IS NULL OR st.state NOT IN ('dismissed','rejected','declined'))"
+        q += " AND r.filtered = 0 AND (st.state IS NULL OR st.state NOT IN ('dismissed','rejected','declined'))"
     q += " ORDER BY COALESCE(sc.score, -1) DESC, r.first_seen DESC LIMIT ?"
     args.append(limit)
     rows = [dict(r) for r in con.execute(q, args)]
@@ -107,6 +116,51 @@ def set_status(role_id: int, body: StatusIn):
         )
     con.close()
     return {"ok": True, "state": body.state}
+
+
+@app.get("/api/queue/unscored")
+def queue_unscored(limit: int = 40):
+    """For the scoring bot: roles that passed filters and have no score yet. Includes the profile."""
+    con = db.connect()
+    prof = get_profile()
+    rows = [dict(r) for r in con.execute(
+        """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
+                  r.url, r.description, r.posted_at
+           FROM roles r LEFT JOIN scores sc ON sc.role_id = r.id LEFT JOIN status st ON st.role_id = r.id
+           WHERE r.filtered = 0 AND sc.role_id IS NULL
+             AND (st.state IS NULL OR st.state NOT IN ('dismissed','rejected','declined'))
+           ORDER BY r.first_seen DESC LIMIT ?""", (limit,))]
+    con.close()
+    return {"profile": prof["markdown"], "threshold": prof["threshold"], "roles": rows}
+
+
+@app.put("/api/roles/{role_id}/score")
+async def put_score(role_id: int, body: ScoreIn):
+    if not 0 <= body.score <= 100:
+        raise HTTPException(400, "score must be 0 to 100")
+    con = db.connect()
+    role = con.execute("SELECT * FROM roles WHERE id=?", (role_id,)).fetchone()
+    if not role:
+        con.close()
+        raise HTTPException(404)
+    thr = con.execute("SELECT threshold FROM profile WHERE id=1").fetchone()["threshold"]
+    with con:
+        con.execute(
+            """INSERT INTO scores (role_id, score, reasons, gaps, scored_at, model) VALUES (?,?,?,?,?,?)
+               ON CONFLICT(role_id) DO UPDATE SET score=excluded.score, reasons=excluded.reasons,
+               gaps=excluded.gaps, scored_at=excluded.scored_at, model=excluded.model""",
+            (role_id, body.score, json.dumps(body.reasons), json.dumps(body.gaps), db.now(), body.model),
+        )
+    notified = False
+    if body.score >= thr and not con.execute(
+        "SELECT 1 FROM notifications WHERE role_id=? AND channel='discord'", (role_id,)).fetchone():
+        if await notify.discord(dict(role), body.score, body.reasons):
+            with con:
+                con.execute("INSERT INTO notifications (role_id, channel, sent_at) VALUES (?, 'discord', ?)",
+                            (role_id, db.now()))
+            notified = True
+    con.close()
+    return {"ok": True, "notified": notified}
 
 
 @app.get("/api/sources")

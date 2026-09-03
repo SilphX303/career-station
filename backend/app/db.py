@@ -50,7 +50,8 @@ def _migrate(con: sqlite3.Connection) -> None:
     """Additive migrations: add columns schema.sql has that the live DB lacks.
     New columns go in BOTH schema.sql and this dict."""
     wanted = {
-        "roles": {"salary_text": "TEXT", "remote_flag": "INTEGER NOT NULL DEFAULT 0"},
+        "roles": {"salary_text": "TEXT", "remote_flag": "INTEGER NOT NULL DEFAULT 0",
+                  "filtered": "INTEGER NOT NULL DEFAULT 0", "filter_reason": "TEXT"},
         "sources": {"last_error": "TEXT"},
     }
     for table, cols in wanted.items():

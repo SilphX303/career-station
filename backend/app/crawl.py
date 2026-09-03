@@ -4,6 +4,7 @@ import logging
 import os
 
 from . import db
+from . import filters
 from .sources import REGISTRY
 
 log = logging.getLogger("career.crawl")
@@ -11,8 +12,9 @@ log = logging.getLogger("career.crawl")
 
 async def run_all() -> dict:
     con = db.connect()
-    prof = con.execute("SELECT search_terms FROM profile WHERE id=1").fetchone()
+    prof = con.execute("SELECT search_terms, filters FROM profile WHERE id=1").fetchone()
     terms = json.loads(prof["search_terms"]) if prof else []
+    filt = json.loads(prof["filters"]) if prof else {}
     env = dict(os.environ)
     summary = {}
     for name, cls in REGISTRY.items():
@@ -31,12 +33,14 @@ async def run_all() -> dict:
                 if exists:
                     con.execute("UPDATE roles SET last_seen=? WHERE id=?", (ts, exists["id"]))
                     continue
+                fl, why = filters.apply(r.__dict__, filt)
                 cur = con.execute(
                     """INSERT INTO roles (source_id, external_id, url, title, company, location, remote_flag,
-                       salary_min, salary_max, salary_text, description, posted_at, first_seen, last_seen, hash)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       salary_min, salary_max, salary_text, description, posted_at, first_seen, last_seen, hash,
+                       filtered, filter_reason)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (row["id"], r.external_id, r.url, r.title, r.company, r.location, int(r.remote_flag),
-                     r.salary_min, r.salary_max, r.salary_text, r.description, r.posted_at, ts, ts, h),
+                     r.salary_min, r.salary_max, r.salary_text, r.description, r.posted_at, ts, ts, h, int(fl), why),
                 )
                 con.execute("INSERT OR IGNORE INTO status (role_id, state, changed_at) VALUES (?, 'new', ?)", (cur.lastrowid, ts))
                 new += 1

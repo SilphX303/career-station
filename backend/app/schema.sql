@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS roles (
   posted_at TEXT,
   first_seen TEXT NOT NULL,
   last_seen TEXT NOT NULL,
-  hash TEXT UNIQUE NOT NULL
+  hash TEXT UNIQUE NOT NULL,
+  filtered INTEGER NOT NULL DEFAULT 0,
+  filter_reason TEXT
 );
 CREATE TABLE IF NOT EXISTS scores (
   role_id INTEGER PRIMARY KEY REFERENCES roles(id),

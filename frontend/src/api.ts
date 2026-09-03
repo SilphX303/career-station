@@ -14,6 +14,16 @@ export type Role = {
   score: number | null
   reasons: string[]
   state: string | null
+  filtered: number
+  filter_reason: string | null
+}
+
+export type Profile = {
+  markdown: string
+  search_terms: string[]
+  filters: { salary_floor?: number; locations?: string[]; exclude_terms?: string[] }
+  threshold: number
+  updated_at: string
 }
 
 export type SourceHealth = {
@@ -39,5 +49,8 @@ export const api = {
     j<{ ok: boolean }>(fetch(`/api/roles/${id}/status`, {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state }),
     })),
+  profile: () => j<Profile>(fetch('/api/profile')),
+  saveProfile: (p: Partial<Profile>) =>
+    j<Profile>(fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) })),
   crawl: () => j<Record<string, unknown>>(fetch('/api/crawl', { method: 'POST' })),
 }

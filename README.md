@@ -21,5 +21,9 @@ Dockerfile build from GitHub. Add a named volume `career-data` mounted at `/data
 - `POST /api/crawl` run all sources now
 - `GET /api/sources` health
 - `GET|PUT /api/profile`
+- `GET /api/queue/unscored` for the scoring bot
+- `PUT /api/roles/{id}/score` `{"score": 88, "reasons": [], "gaps": []}`; notifies Discord at or above threshold
+
+Scoring is done by the Claude Code bot, see `bot/score-roles.md`.
 
 Plan and phases: see `career-station-plan.md`.

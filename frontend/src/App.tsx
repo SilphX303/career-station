@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Role, type SourceHealth } from './api'
+import ProfilePage from './Profile'
 
 const FILTERS: { key: string; label: string }[] = [
   { key: '', label: 'Worth a look' },
   { key: 'shortlisted', label: 'Shortlisted' },
   { key: 'applied', label: 'Applied' },
   { key: 'progressing', label: 'Progressing' },
+  { key: 'filtered', label: 'Filtered out' },
 ]
 
 const FLOOR = 74000
@@ -34,6 +36,7 @@ function ago(iso: string) {
 
 export default function App() {
   const [filter, setFilter] = useState('')
+  const [view, setView] = useState<'roles' | 'profile'>('roles')
   const [roles, setRoles] = useState<Role[]>([])
   const [sources, setSources] = useState<SourceHealth[]>([])
   const [busy, setBusy] = useState(false)
@@ -66,14 +69,20 @@ export default function App() {
     <main className="mx-auto max-w-2xl px-4 pb-24 pt-6">
       <header className="mb-5 flex items-baseline justify-between">
         <h1 className="text-lg font-semibold tracking-tight">career-station</h1>
-        <button
-          onClick={crawl}
-          disabled={busy}
-          className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-paper disabled:opacity-50"
-        >
-          {busy ? 'Searching' : 'Search now'}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setView(view === 'roles' ? 'profile' : 'roles')} className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-paper">
+            {view === 'roles' ? 'Profile' : 'Roles'}
+          </button>
+          {view === 'roles' && (
+            <button onClick={crawl} disabled={busy} className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-paper disabled:opacity-50">
+              {busy ? 'Searching' : 'Search now'}
+            </button>
+          )}
+        </div>
       </header>
+
+      {view === 'profile' && <ProfilePage onDone={() => { setView('roles'); void load() }} />}
+      {view === 'roles' && <>
 
       <nav className="mb-4 flex gap-2 overflow-x-auto">
         {FILTERS.map((f) => (
@@ -113,23 +122,28 @@ export default function App() {
                 {r.remote_flag && !/remote/i.test(r.location ?? '') ? ' (remote)' : ''}
               </p>
               <p className={`text-sm ${aboveFloor(r) ? 'text-sage' : 'text-muted'}`}>{salary(r)}</p>
+              {r.filtered === 1 && r.filter_reason && (
+                <p className="mt-1 text-sm text-rust/80">Hidden: {r.filter_reason}</p>
+              )}
               {r.reasons.length > 0 && (
                 <p className="mt-1 text-sm text-paper/80">{r.reasons.slice(0, 2).join('. ')}</p>
               )}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                {r.state !== 'shortlisted' && (
+                {r.filtered !== 1 && r.state !== 'shortlisted' && (
                   <button onClick={() => act(r.id, 'shortlisted')} className="text-amber hover:underline">Shortlist</button>
                 )}
-                {r.state !== 'applied' && (
+                {r.filtered !== 1 && r.state !== 'applied' && (
                   <button onClick={() => act(r.id, 'applied')} className="text-paper hover:underline">Applied</button>
                 )}
-                <button onClick={() => act(r.id, 'dismissed')} className="text-muted hover:underline">Not for me</button>
+                {r.filtered !== 1 && <button onClick={() => act(r.id, 'dismissed')} className="text-muted hover:underline">Not for me</button>}
                 <span className="ml-auto text-xs text-muted">{r.source}, {ago(r.first_seen)}</span>
               </div>
             </div>
           </li>
         ))}
       </ul>
+
+      </>}
 
       <footer className="fixed inset-x-0 bottom-0 border-t border-line bg-ink/95 px-4 py-2 text-xs text-muted backdrop-blur">
         <div className="mx-auto flex max-w-2xl gap-4 overflow-x-auto">

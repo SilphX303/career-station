@@ -8,7 +8,9 @@ Sibling of cupid-station and Arkadia Forge. Same stack, same dev loop, same depl
 
 ## Status
 
-- Phase 0: not started. Spec written 3 Sep 2026.
+- Phase 0: done, deployed on Coolify (HV02), Reed returning results. 3 Sep 2026.
+- Phase 1a: filters, profile page, scoring queue and score endpoint, Discord notify on score. Built 3 Sep 2026, awaiting deploy.
+- Decision: no LLM in the app. Scoring and documents are done by the Claude Code bot on ark-agent-01 (Max subscription) via the API. See `bot/score-roles.md`.
 
 ## Goals (v0.1)
 
@@ -30,7 +32,6 @@ Sibling of cupid-station and Arkadia Forge. Same stack, same dev loop, same depl
 - Frontend: Vite + React + TypeScript + Tailwind v4 (design tokens in `frontend/src/index.css` via `@theme static`)
 - Built frontend lands in `backend/static/`, served by FastAPI
 - Data: `/data` named volume in Coolify (`career-data`), single backup target
-- LLM calls: Anthropic API by default (env `CAREER_LLM_BASE_URL` and `CAREER_LLM_MODEL` allow pointing at ark-brain-01 vLLM for non-sensitive tasks)
 - Notifications: Discord webhook (env `CAREER_DISCORD_WEBHOOK`)
 
 ## Deployment
@@ -88,7 +89,7 @@ Hard filters (roles failing these are stored but never scored or notified):
 
 ## Fit scoring
 
-One LLM call per new role, structured output:
+Done by the bot, not the app. The app exposes `GET /api/queue/unscored` and `PUT /api/roles/{id}/score`. Task spec in `bot/score-roles.md`. Output shape:
 
 ```json
 {"score": 0-100, "reasons": ["..."], "gaps": ["..."], "salary_band_guess": "..."}
@@ -96,7 +97,7 @@ One LLM call per new role, structured output:
 
 Prompt includes the master profile, the hard-filter results, and the job description. Score is a fit judgement, not a "will I get it" judgement. Roles at 75 and above trigger a notification. Threshold editable in UI.
 
-Batch scoring runs after each crawl. Cap at 40 LLM calls per run to control cost.
+The bot runs 20 minutes after each crawl. Queue returns 40 at a time.
 
 ## Notifications
 
