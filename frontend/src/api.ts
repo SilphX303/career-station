@@ -19,6 +19,7 @@ export type Role = {
   filter_reason: string | null
   doc_cv?: string | null
   doc_cover?: string | null
+  doc_prep?: string | null
   desc_quality?: string | null
   watch?: number
   cluster_size?: number
@@ -29,7 +30,7 @@ export type Role = {
 
 export type Doc = {
   id: number
-  kind: 'cv' | 'cover'
+  kind: 'cv' | 'cover' | 'prep'
   status: 'pending' | 'ready' | 'failed'
   content: string | null
   requested_at: string
@@ -51,6 +52,12 @@ export type Brief = {
   error?: string
 }
 export type Research = { role_id: number; status: 'pending' | 'ready' | 'failed'; brief: Brief | null; requested_at: string; generated_at: string | null }
+
+export type Nudges = {
+  stale_applied: { id: number; title: string; company: string | null; days: number }[]
+  progressing: { id: number; title: string; company: string | null; note: string | null; prep_ready: number; brief_status: string | null }[]
+  flagged_open: { id: number; title: string; company: string | null; state: string; ai_interview: string | null; red: string[] }[]
+}
 
 export type Dismissals = { total: number; by_reason: Record<string, { count: number; examples: { title: string; company: string | null }[] }> }
 
@@ -99,7 +106,8 @@ export const api = {
   docs: (id: number) => j<Doc[]>(fetch(`/api/roles/${id}/documents`)),
   editDoc: (docId: number, content: string) =>
     j<{ ok: boolean }>(fetch(`/api/documents/${docId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content }) })),
-  requestDoc: (id: number, kind: 'cv' | 'cover') =>
+  nudges: () => j<Nudges>(fetch('/api/nudges')),
+  requestDoc: (id: number, kind: 'cv' | 'cover' | 'prep') =>
     j<{ id: number; status: string }>(fetch(`/api/roles/${id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) })),
   resolveWatchlist: () => j<{ resolved: { name: string; url: string }[]; unresolved: string[]; watchlist: string[] }>(fetch('/api/watchlist/resolve', { method: 'POST' })),
   profile: () => j<Profile>(fetch('/api/profile')),

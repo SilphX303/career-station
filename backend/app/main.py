@@ -108,6 +108,7 @@ def list_roles(state: str | None = None, limit: int = 200):
                   sc.score, sc.reasons, sc.track, st.state,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cv' ORDER BY d.id DESC LIMIT 1) AS doc_cv,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover,
+                  (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='prep' ORDER BY d.id DESC LIMIT 1) AS doc_prep,
                   rs.status AS brief_status, rs.brief AS brief_json,
                   (SELECT COUNT(*) FROM roles m WHERE m.cluster_id = r.id) AS cluster_size
            FROM roles r
@@ -387,7 +388,7 @@ def put_research(role_id: int, body: BriefResult):
     return {"ok": True}
 
 
-DOC_KINDS = {"cv", "cover"}
+DOC_KINDS = {"cv", "cover", "prep"}
 
 
 @app.post("/api/roles/{role_id}/documents")
@@ -472,9 +473,13 @@ def queue_documents(limit: int = 5):
         role["reasons"] = json.loads(role["reasons"]) if role.get("reasons") else []
         role["gaps"] = json.loads(role["gaps"]) if role.get("gaps") else []
         track = role.get("track") or "engineer"
+        rs = con.execute("SELECT brief, status FROM research WHERE role_id=?", (d["role_id"],)).fetchone()
+        st = con.execute("SELECT note FROM status WHERE role_id=?", (d["role_id"],)).fetchone()
         items.append({
             "document_id": d["id"], "kind": d["kind"], "track": track, "role": role,
             "base_cv": prof["cv_management"] if track == "management" else prof["cv_engineer"],
+            "brief": json.loads(rs["brief"]) if rs and rs["status"] == "ready" and rs["brief"] else None,
+            "pipeline_note": st["note"] if st else None,
         })
     con.close()
     return {"profile": prof["markdown"], "items": items}
@@ -613,6 +618,36 @@ def cluster_now():
     out = cluster.run(con)
     con.close()
     return out
+
+
+@app.get("/api/nudges")
+def nudges(stale_days: int = 10):
+    """Things that need a human decision: applications gone quiet, interviews to prepare for, briefs with red flags on open roles."""
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=stale_days)).isoformat(timespec="seconds")
+    con = db.connect()
+    stale = [dict(r) for r in con.execute(
+        """SELECT r.id, r.title, r.company, st.changed_at, st.note FROM status st JOIN roles r ON r.id=st.role_id
+           WHERE st.state='applied' AND st.changed_at <= ? ORDER BY st.changed_at""", (cutoff,))]
+    for r in stale:
+        r["days"] = (now - datetime.fromisoformat(r["changed_at"])).days
+    progressing = [dict(r) for r in con.execute(
+        """SELECT r.id, r.title, r.company, st.changed_at, st.note,
+                  (SELECT status FROM research rs WHERE rs.role_id=r.id) AS brief_status,
+                  (SELECT COUNT(*) FROM documents d WHERE d.role_id=r.id AND d.kind='prep' AND d.status='ready') AS prep_ready
+           FROM status st JOIN roles r ON r.id=st.role_id WHERE st.state='progressing' ORDER BY st.changed_at DESC""")]
+    flagged = []
+    for r in con.execute(
+        """SELECT r.id, r.title, r.company, rs.brief, st.state FROM research rs JOIN roles r ON r.id=rs.role_id
+           LEFT JOIN status st ON st.role_id=r.id WHERE rs.status='ready' AND (st.state IS NULL OR st.state IN ('new','shortlisted','applied','progressing'))"""):
+        b = json.loads(r["brief"] or "{}")
+        reds = [f["text"] for f in b.get("flags", []) if f.get("kind") == "red"]
+        if reds or b.get("ai_interview") == "yes":
+            flagged.append({"id": r["id"], "title": r["title"], "company": r["company"], "state": r["state"] or "new",
+                            "ai_interview": b.get("ai_interview"), "red": reds[:3]})
+    con.close()
+    return {"stale_applied": stale, "progressing": progressing, "flagged_open": flagged}
 
 
 @app.get("/api/sources")

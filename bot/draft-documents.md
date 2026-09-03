@@ -42,3 +42,18 @@ Produce a cover note in markdown, 180 to 260 words, in Steve's voice as it reads
 - Never state or imply that a document was AI-generated.
 - If `base_cv` is empty, return `status: "failed"` with content "No base CV for track <track> in the profile" so Steve knows what to fix.
 - If `role.description` is empty (placeholder or LinkedIn-only role), still draft from title, company and profile, and add a single first line `> Drafted without the full ad text; check it against the posting.` to the document.
+
+### kind = prep
+
+Interview preparation pack, markdown, for a role that is progressing. Inputs: the role and ad, `brief` (may be null if research has not run), `pipeline_note` (what the inbox sweep saw, e.g. "interview Tue with the Head of Infrastructure"), the base CV, the score reasons and gaps.
+
+Structure, in this order, each section short:
+1. **The ask in one line.** What they are hiring for, in their words.
+2. **Why me, three points.** The strongest matches between the ad and the CV, each with the specific example Steve would tell.
+3. **The gaps, and the honest answer to each.** One or two sentences per gap from the scoring, plus any the brief surfaced. No spin; adjacent experience and how he closes it.
+4. **Questions they will probably ask.** Six to ten, drawn from the ad and the brief's hiring-process notes, each with a two-line answer scaffold (the point, the example). Always include the engagement question for engineer-track roles: "you've led teams, will a hands-on role keep you?" with an answer built from the profile's note on that.
+5. **Questions to ask them.** Five, at least two coming straight from the brief's amber and red flags (hybrid pattern, salary range, on-call, the reporting line). Phrased so they get a real answer.
+6. **Things not to say.** Two or three lines. Anything the brief suggests is a sore point at the company, and anything from the profile's will-not list that should be raised as a question rather than a refusal.
+7. **Logistics.** From `pipeline_note` if it has a date, interviewer or format; otherwise "check the thread".
+
+400 to 700 words. Output the pack only.

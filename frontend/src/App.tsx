@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type Role, type SourceHealth } from './api'
+import { api, type Nudges, type Role, type SourceHealth } from './api'
 import { ago, aboveFloor, isAgency, salaryShort, trackBg, trackCode, trackText } from './format'
 import ProfilePage from './Profile'
 import RoleSheet from './RoleSheet'
@@ -23,11 +23,13 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
+  const [nudges, setNudges] = useState<Nudges | null>(null)
 
   const load = useCallback(async () => {
     try {
       const [r, s, p] = await Promise.all([api.roles(filter || undefined), api.sources(), api.profile()])
       setRoles(r); setSources(s); setThreshold(p.threshold); setErr(null)
+      api.nudges().then(setNudges).catch(() => undefined)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     }
@@ -55,7 +57,12 @@ export default function App() {
   }
 
   const shown = roles.filter((r) => (!directOnly || !isAgency(r)) && (trackFilter === 'all' || r.track === trackFilter))
-  const openRole = openId != null ? roles.find((r) => r.id === openId) ?? null : null
+  const [extraRole, setExtraRole] = useState<Role | null>(null)
+  useEffect(() => {
+    if (openId == null || roles.some((r) => r.id === openId)) { setExtraRole(null); return }
+    api.role(openId).then(setExtraRole).catch(() => setExtraRole(null))
+  }, [openId, roles])
+  const openRole = openId != null ? roles.find((r) => r.id === openId) ?? extraRole : null
 
   return (
     <main className="mx-auto max-w-3xl px-3 pb-16 pt-3 sm:px-4">
@@ -108,6 +115,26 @@ export default function App() {
           </div>
 
           {err && <p className="mb-3 border border-alert px-3 py-2 text-xs text-alert">{err}</p>}
+
+          {nudges && (nudges.stale_applied.length + nudges.progressing.length + nudges.flagged_open.length) > 0 && filter === '' && (
+            <div className="lcars-panel mb-3 p-3">
+              <div className="lcars-label mb-2">Needs you</div>
+              <ul className="space-y-1 text-sm">
+                {nudges.progressing.map((n) => (
+                  <li key={`p${n.id}`} className="flex gap-2"><span className="lcars-code mt-1 shrink-0 text-lavender">PREP</span>
+                    <button onClick={() => setOpenId(n.id)} className="text-left text-glow hover:underline">{n.title}, {n.company}{n.note ? `: ${n.note.replace(/^\[\w+\]\s*/, '')}` : ''}{n.prep_ready ? ' (pack ready)' : ''}</button></li>
+                ))}
+                {nudges.stale_applied.map((n) => (
+                  <li key={`s${n.id}`} className="flex gap-2"><span className="lcars-code mt-1 shrink-0 text-amber">CHASE</span>
+                    <button onClick={() => setOpenId(n.id)} className="text-left text-glow hover:underline">{n.title}, {n.company}: applied {n.days} days, no reply</button></li>
+                ))}
+                {nudges.flagged_open.map((n) => (
+                  <li key={`f${n.id}`} className="flex gap-2"><span className="lcars-code mt-1 shrink-0 text-alert">{n.ai_interview === 'yes' ? 'AI-INT' : 'RED'}</span>
+                    <button onClick={() => setOpenId(n.id)} className="text-left text-glow hover:underline">{n.title}, {n.company} ({n.state}): {n.ai_interview === 'yes' ? 'AI interview stage' : n.red[0]}</button></li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="lcars-panel">
             {shown.length === 0 && <p className="px-4 py-6 text-sm text-dim">Nothing here yet.</p>}

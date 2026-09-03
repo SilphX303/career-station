@@ -88,7 +88,7 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
     try { await api.rescore(role.id); setRescored(true) } catch (e) { setErr(String(e)) }
   }
 
-  async function draft(kind: 'cv' | 'cover') {
+  async function draft(kind: 'cv' | 'cover' | 'prep') {
     try { await api.requestDoc(role.id, kind); await loadDocs() } catch (e) { setErr(String(e)) }
   }
   function startEdit(d: Doc) {
@@ -269,9 +269,9 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
           <section>
             <div className="lcars-label mb-2">Documents</div>
             <div className="flex flex-wrap gap-2">
-              {(['cv', 'cover'] as const).map((k) => {
+              {(['cv', 'cover', 'prep'] as const).filter((k) => k !== 'prep' || state === 'progressing' || docs.some((x) => x.kind === 'prep')).map((k) => {
                 const d = docs.find((x) => x.kind === k)
-                const label = k === 'cv' ? 'CV' : 'Cover note'
+                const label = k === 'cv' ? 'CV' : k === 'cover' ? 'Cover note' : 'Prep pack'
                 if (!d) return <button key={k} onClick={() => draft(k)} className="lcars-btn lcars-btn-primary">Draft {label}</button>
                 if (d.status === 'pending') return (
                   <span key={k} className="lcars-btn opacity-70">

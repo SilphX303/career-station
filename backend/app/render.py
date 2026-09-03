@@ -30,5 +30,5 @@ def to_pdf(md_text: str) -> bytes:
 
 def filename(kind: str, company: str | None, title: str | None) -> str:
     slug = re.sub(r"[^A-Za-z0-9]+", "-", f"{company or ''}-{title or ''}").strip("-")[:60]
-    label = "CV" if kind == "cv" else "Cover-note"
+    label = {"cv": "CV", "cover": "Cover-note", "prep": "Interview-prep"}.get(kind, kind)
     return f"Steve-Hunter-{label}-{slug}.pdf" if slug else f"Steve-Hunter-{label}.pdf"
