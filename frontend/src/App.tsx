@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type Role, type SourceHealth } from './api'
+import { api, type Role, type RoleDetail, type SourceHealth } from './api'
 import ProfilePage from './Profile'
 
 const FILTERS: { key: string; label: string }[] = [
@@ -47,6 +47,14 @@ export default function App() {
   const [filter, setFilter] = useState('')
   const [view, setView] = useState<'roles' | 'profile'>('roles')
   const [directOnly, setDirectOnly] = useState(false)
+  const [open, setOpen] = useState<number | null>(null)
+  const [detail, setDetail] = useState<RoleDetail | null>(null)
+
+  async function toggle(id: number) {
+    if (open === id) { setOpen(null); setDetail(null); return }
+    setOpen(id); setDetail(null)
+    try { setDetail(await api.role(id)) } catch (e) { setErr(String(e)) }
+  }
   const [roles, setRoles] = useState<Role[]>([])
   const [sources, setSources] = useState<SourceHealth[]>([])
   const [busy, setBusy] = useState(false)
@@ -64,6 +72,11 @@ export default function App() {
   }, [filter])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get('role'))
+    if (id) void toggle(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function act(id: number, state: string) {
     setRoles((rs) => rs.filter((r) => r.id !== id))
@@ -128,14 +141,14 @@ export default function App() {
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <a href={r.url} target="_blank" rel="noreferrer" className="block font-medium leading-snug hover:underline">
+              <button onClick={() => toggle(r.id)} className="block w-full text-left font-medium leading-snug">
                 {r.title}
                 {r.track && (
                   <span className="ml-2 align-middle rounded border border-line px-1.5 py-px text-xs font-normal text-muted">
                     {r.track === 'management' ? 'Mgmt' : r.track === 'engineer' ? 'Eng' : r.track}
                   </span>
                 )}
-              </a>
+              </button>
               <p className="text-sm text-muted">
                 {isAgency(r) && <span className="mr-1.5 rounded bg-line px-1 py-px text-xs">Agency</span>}
                 {r.company ?? 'Unknown company'}
@@ -149,6 +162,24 @@ export default function App() {
               {r.reasons.length > 0 && (
                 <p className="mt-1 text-sm text-paper/80">{joinReasons(r.reasons)}</p>
               )}
+              {open === r.id && (
+                <div className="mt-3 space-y-3 border-l-2 border-line pl-3 text-sm">
+                  {!detail && <p className="text-muted">Loading</p>}
+                  {detail && detail.gaps.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-xs uppercase tracking-wide text-muted">Gaps to address</p>
+                      <ul className="list-disc space-y-0.5 pl-4 text-paper/80">{detail.gaps.map((g, i) => <li key={i}>{g}</li>)}</ul>
+                    </div>
+                  )}
+                  {detail && detail.note && <p className="text-muted">{detail.note}</p>}
+                  {detail && (
+                    <div>
+                      <p className="mb-1 text-xs uppercase tracking-wide text-muted">The ad</p>
+                      <p className="whitespace-pre-line leading-relaxed text-paper/80">{detail.description || 'No description captured for this one; open the ad.'}</p>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 {r.filtered !== 1 && r.state !== 'shortlisted' && (
                   <button onClick={() => act(r.id, 'shortlisted')} className="text-amber hover:underline">Shortlist</button>
@@ -157,6 +188,7 @@ export default function App() {
                   <button onClick={() => act(r.id, 'applied')} className="text-paper hover:underline">Applied</button>
                 )}
                 {r.filtered !== 1 && <button onClick={() => act(r.id, 'dismissed')} className="text-muted hover:underline">Not for me</button>}
+                <a href={r.url} target="_blank" rel="noreferrer" className="text-muted hover:underline">Open ad</a>
                 <span className="ml-auto text-xs text-muted">{r.source}, {ago(r.first_seen)}</span>
               </div>
             </div>
@@ -172,7 +204,7 @@ export default function App() {
           {sources.map((s) => (
             <span key={s.id} className="shrink-0" title={s.last_error ?? ''}>
               <span className={`mr-1 inline-block size-2 rounded-full ${s.last_ok === 1 ? 'bg-sage' : s.last_ok === 0 ? 'bg-rust' : 'bg-line'}`} />
-              {s.name}{s.last_run ? ` ${ago(s.last_run)}` : ''}{s.last_error ? `: ${s.last_error}` : ''}
+              {s.name} {s.last_ok == null ? 'not set up' : `${s.last_run ? ago(s.last_run) : ''}${s.last_error ? `: ${s.last_error}` : ''}`}
             </span>
           ))}
         </div>

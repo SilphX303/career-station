@@ -27,6 +27,8 @@ export type Profile = {
   updated_at: string
 }
 
+export type RoleDetail = Role & { description: string | null; gaps: string[]; note: string | null }
+
 export type SourceHealth = {
   id: number
   name: string
@@ -45,6 +47,7 @@ async function j<T>(r: Promise<Response>): Promise<T> {
 
 export const api = {
   roles: (state?: string) => j<Role[]>(fetch(`/api/roles${state ? `?state=${state}` : ''}`)),
+  role: (id: number) => j<RoleDetail>(fetch(`/api/roles/${id}`)),
   sources: () => j<SourceHealth[]>(fetch('/api/sources')),
   setStatus: (id: number, state: string) =>
     j<{ ok: boolean }>(fetch(`/api/roles/${id}/status`, {

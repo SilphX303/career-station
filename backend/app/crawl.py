@@ -50,9 +50,10 @@ async def run_all() -> dict:
                 )
                 con.execute("INSERT OR IGNORE INTO status (role_id, state, changed_at) VALUES (?, 'new', ?)", (cur.lastrowid, ts))
                 new += 1
+            not_set = bool(src.error) and ("not set" in src.error or "disabled" in src.error)
             con.execute(
                 "UPDATE sources SET last_run=?, last_ok=?, last_error=? WHERE id=?",
-                (ts, 0 if src.error else 1, src.error, row["id"]),
+                (ts, None if not_set else (0 if src.error else 1), "not set up" if not_set else src.error, row["id"]),
             )
         summary[name] = {"fetched": len(roles), "new": new, "error": src.error}
         log.info("%s: fetched=%d new=%d error=%s", name, len(roles), new, src.error)

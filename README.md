@@ -24,6 +24,8 @@ Dockerfile build from GitHub. Add a named volume `career-data` mounted at `/data
 - `GET /api/queue/unscored` for the scoring bot
 - `PUT /api/roles/{id}/score` `{"score": 88, "reasons": [], "gaps": []}`; notifies Discord at or above threshold
 
+- `POST /api/sync/status` `{"source":"inbox","items":[{"company":"..","title":"..","state":"applied","note":".."}]}` fuzzy-matches inbox findings to roles
+
 Scoring is done by the Claude Code bot, see `bot/score-roles.md`.
 
 Plan and phases: see `career-station-plan.md`.

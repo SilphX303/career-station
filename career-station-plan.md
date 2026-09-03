@@ -10,7 +10,8 @@ Sibling of cupid-station and Arkadia Forge. Same stack, same dev loop, same depl
 
 - Phase 0: done, deployed on Coolify (HV02), Reed returning results. 3 Sep 2026.
 - Phase 1a: filters, profile page, scoring queue and score endpoint, Discord notify on score. Deployed 3 Sep 2026; bot scoring on cron, first batch 33 roles.
-- Phase 1b: Adzuna, RSS and LinkedIn sources, cross-source merge, agency tag and direct-only toggle. Built 3 Sep 2026.
+- Phase 1b: Adzuna, RSS and LinkedIn sources, cross-source merge, agency tag and direct-only toggle. Deployed 3 Sep 2026.
+- Phase 2a: `POST /api/sync/status` with fuzzy matching for the inbox sweep; expandable cards with gaps and ad text; deep link `?role=`. Built 3 Sep 2026. Sweep wiring depends on Claude Box run tool.
 - Decision: no LLM in the app. Scoring and documents are done by the Claude Code bot on ark-agent-01 (Max subscription) via the API. See `bot/score-roles.md`.
 
 ## Goals (v0.1)
@@ -141,7 +142,7 @@ Stored in the DB but exportable and importable as a file so it can be edited out
 - Playwright screenshots of list and profile pages
 
 ### Phase 2: pipeline sync
-- Read the Gmail Job Search labels (Applied, Progressing, Rejected, Declined) and update role status. Match on company and title, fuzzy. Two options: (a) the existing inbox sweep writes a JSON status file the app polls, (b) the app talks to Gmail directly via OAuth. Prefer (a): keeps Gmail credentials out of the app.
+- Read the Gmail Job Search labels (Applied, Progressing, Rejected, Declined) and update role status. Match on company and title, fuzzy. Decision: the sweep (a scheduled chat using the Gmail connector) posts its findings to `POST /api/sync/status` via a curl run on the Claude Box through `arkadia_run_command`, so the call stays on the LAN and the app needs no auth. Longer term the sweep may move onto the bot with its own Gmail access. The endpoint fuzzy-matches company then title, never downgrades progressing or a rejection, and returns matched and unmatched lists so the sweep can report what it could not place.
 - Weekly digest
 
 ### Phase 3: documents

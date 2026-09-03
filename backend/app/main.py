@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import crawl, db, notify
+from . import crawl, db, notify, sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -44,6 +44,26 @@ class ScoreIn(BaseModel):
     track: str | None = None
 
 
+class BatchScore(ScoreIn):
+    role_id: int
+
+
+class BatchIn(BaseModel):
+    scores: list[BatchScore]
+
+
+class SyncItem(BaseModel):
+    company: str
+    title: str | None = None
+    state: str
+    note: str | None = None
+
+
+class SyncIn(BaseModel):
+    items: list[SyncItem]
+    source: str = "inbox"
+
+
 class ProfileIn(BaseModel):
     markdown: str | None = None
     search_terms: list[str] | None = None
@@ -74,7 +94,7 @@ def list_roles(state: str | None = None, limit: int = 200):
         q += " AND r.filtered = 0 AND st.state = ?"
         args.append(state)
     else:
-        q += " AND r.filtered = 0 AND (st.state IS NULL OR st.state NOT IN ('dismissed','rejected','declined'))"
+        q += " AND r.filtered = 0 AND (st.state IS NULL OR st.state IN ('new','shortlisted'))"
     q += " ORDER BY COALESCE(sc.score, -1) DESC, r.first_seen DESC LIMIT ?"
     args.append(limit)
     rows = [dict(r) for r in con.execute(q, args)]
@@ -162,6 +182,53 @@ async def put_score(role_id: int, body: ScoreIn):
             notified = True
     con.close()
     return {"ok": True, "notified": notified}
+
+
+@app.post("/api/scores/batch")
+async def post_scores_batch(body: BatchIn):
+    """Bot submits a whole batch in one call. Each item is scored independently; bad ones are reported, not fatal."""
+    ok, failed, notified = [], [], 0
+    for item in body.scores:
+        try:
+            r = await put_score(item.role_id, ScoreIn(**item.model_dump(exclude={"role_id"})))
+            ok.append(item.role_id)
+            notified += int(bool(r.get("notified")))
+        except HTTPException as e:
+            failed.append({"role_id": item.role_id, "why": e.detail})
+    return {"scored": len(ok), "failed": failed, "notified": notified}
+
+
+@app.post("/api/sync/status")
+def sync_status(body: SyncIn):
+    """Inbox sweep posts what it found. Fuzzy-matches to roles and updates status. Never downgrades progressing to applied."""
+    order = {"new": 0, "shortlisted": 1, "applied": 2, "progressing": 3, "rejected": 4, "declined": 4, "dismissed": 4}
+    con = db.connect()
+    roles = [dict(r) for r in con.execute(
+        "SELECT r.id, r.company, r.title, st.state FROM roles r LEFT JOIN status st ON st.role_id=r.id")]
+    matched, unmatched = [], []
+    ts = db.now()
+    with con:
+        for it in body.items:
+            if it.state not in STATES:
+                unmatched.append({**it.model_dump(), "why": "bad state"})
+                continue
+            role, conf = sync.best_match(it.company, it.title, roles)
+            if not role:
+                unmatched.append({**it.model_dump(), "why": f"no match ({conf:.2f})"})
+                continue
+            cur = role.get("state") or "new"
+            if order.get(it.state, 0) < order.get(cur, 0) and cur in ("progressing", "rejected", "declined"):
+                matched.append({"role_id": role["id"], "title": role["title"], "kept": cur, "confidence": round(conf, 2)})
+                continue
+            note = f"[{body.source}] {it.note}" if it.note else f"[{body.source}]"
+            con.execute(
+                """INSERT INTO status (role_id, state, changed_at, note) VALUES (?,?,?,?)
+                   ON CONFLICT(role_id) DO UPDATE SET state=excluded.state, changed_at=excluded.changed_at, note=excluded.note""",
+                (role["id"], it.state, ts, note))
+            role["state"] = it.state
+            matched.append({"role_id": role["id"], "title": role["title"], "state": it.state, "confidence": round(conf, 2)})
+    con.close()
+    return {"matched": matched, "unmatched": unmatched}
 
 
 @app.get("/api/sources")

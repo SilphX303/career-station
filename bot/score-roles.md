@@ -2,11 +2,11 @@
 
 Runs on ark-agent-01 (Claude Code, Max subscription). Schedule: every 4 hours, offset 20 minutes after the crawl, plus on demand.
 
-Env: `CAREER_URL` (e.g. http://career.arkadia.network)
+Env: `CAREER_URL` (https://career.arkadia.network, https not http; http redirects and curl without -L returns nothing)
 
 ## Steps
 
-1. `GET $CAREER_URL/api/queue/unscored?limit=40`
+1. The wrapper fetches `GET $CAREER_URL/api/queue/unscored?limit=40` and passes the JSON to the agent on stdin (or inline in the prompt).
    Response: `{ "profile": "<markdown>", "threshold": 75, "roles": [ {id, title, company, location, remote_flag, salary_min, salary_max, salary_text, url, description, posted_at}, ... ] }`
    If `roles` is empty, stop.
    If `profile` is empty, stop and post to Discord: "career-station: profile is empty, nothing to score against."
@@ -26,10 +26,14 @@ Env: `CAREER_URL` (e.g. http://career.arkadia.network)
    Reasons: two short sentences, specific to this role and this profile, written so they read well on a phone card. Gaps: things to address in a cover note, or empty.
    Score fit, not "will I get it". Do not penalise unstated salary; note it as a gap.
 
-3. `PUT $CAREER_URL/api/roles/{id}/score` with the JSON above (including `track`) plus `"model": "<model name>"`.
-   The app handles notifications; do not post to Discord per role.
+3. Output the whole batch as ONE JSON document on stdout and nothing else:
+   ```json
+   {"scores": [{"role_id": 123, "track": "engineer", "score": 88, "reasons": [...], "gaps": [...], "model": "<model name>"}, ...]}
+   ```
+   The wrapper script submits it with `curl -s -X POST $CAREER_URL/api/scores/batch -H 'content-type: application/json' --data @-`.
+   The agent needs no curl, no Write, no scratch files. The app handles notifications; never post to Discord per role.
 
-4. After the batch, log one line: `scored N roles, M above threshold`. Nothing else. Never report counts of low scores or rejections anywhere Steve reads.
+4. The wrapper logs one line from the response: `scored N roles, M above threshold`. Nothing else. Never report counts of low scores or rejections anywhere Steve reads.
 
 ## Failure handling
 
