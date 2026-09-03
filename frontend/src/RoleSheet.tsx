@@ -15,6 +15,9 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
   const [research, setResearch] = useState<Research | null>(null)
   const [showDoc, setShowDoc] = useState<Doc | null>(null)
   const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftText, setDraftText] = useState('')
+  const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [dragY, setDragY] = useState(0)
   const [loadingAd, setLoadingAd] = useState(false)
@@ -85,6 +88,18 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
 
   async function draft(kind: 'cv' | 'cover') {
     try { await api.requestDoc(role.id, kind); await loadDocs() } catch (e) { setErr(String(e)) }
+  }
+  function startEdit(d: Doc) {
+    setShowDoc(d); setDraftText(d.content ?? ''); setEditing(true)
+  }
+  async function saveEdit() {
+    if (!showDoc) return
+    setSaving(true)
+    try {
+      await api.editDoc(showDoc.id, draftText)
+      await loadDocs()
+      setShowDoc({ ...showDoc, content: draftText }); setEditing(false)
+    } catch (e) { setErr(String(e)) } finally { setSaving(false) }
   }
   async function copy(text: string) {
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1200) } catch { setErr('Copy failed') }
@@ -247,10 +262,15 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
             )}
             {showDoc?.content && (
               <div className="lcars-panel mt-3 p-3">
-                <div className="mb-2 flex justify-end">
-                  <button onClick={() => copy(showDoc.content!)} className="lcars-code text-lavender">{copied ? 'Copied' : 'Copy markdown'}</button>
+                <div className="mb-2 flex flex-wrap justify-end gap-x-4 gap-y-1">
+                  {!editing && <button onClick={() => startEdit(showDoc)} className="lcars-code text-lavender">Edit</button>}
+                  {editing && <button onClick={saveEdit} disabled={saving} className="lcars-code text-amber">{saving ? 'Saving' : 'Save'}</button>}
+                  {editing && <button onClick={() => setEditing(false)} className="lcars-code text-dim">Cancel</button>}
+                  {!editing && <button onClick={() => copy(showDoc.content!)} className="lcars-code text-lavender">{copied ? 'Copied' : 'Copy markdown'}</button>}
                 </div>
-                <div className="lcars-prose">{showDoc.content}</div>
+                {editing
+                  ? <textarea value={draftText} onChange={(e) => setDraftText(e.target.value)} rows={24} className="lcars-input w-full leading-relaxed" spellCheck />
+                  : <div className="lcars-prose">{showDoc.content}</div>}
               </div>
             )}
           </section>

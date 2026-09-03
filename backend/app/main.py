@@ -382,6 +382,30 @@ def list_documents(role_id: int):
     return rows
 
 
+class DocEdit(BaseModel):
+    content: str
+
+
+@app.patch("/api/documents/{doc_id}")
+def edit_document(doc_id: int, body: DocEdit):
+    """Steve's own edit of a ready document. Keeps status ready; PDF renders from the stored content."""
+    if not body.content.strip():
+        raise HTTPException(400, "content is empty")
+    con = db.connect()
+    d = con.execute("SELECT status FROM documents WHERE id=?", (doc_id,)).fetchone()
+    if not d:
+        con.close()
+        raise HTTPException(404)
+    if d["status"] != "ready":
+        con.close()
+        raise HTTPException(409, "only ready documents can be edited")
+    with con:
+        con.execute("UPDATE documents SET content=?, model=COALESCE(model,'') || ' +edited' WHERE id=? AND model NOT LIKE '%+edited'", (body.content, doc_id))
+        con.execute("UPDATE documents SET content=? WHERE id=?", (body.content, doc_id))
+    con.close()
+    return {"ok": True}
+
+
 @app.get("/api/documents/{doc_id}.pdf")
 def document_pdf(doc_id: int):
     con = db.connect()
@@ -461,6 +485,30 @@ def rescore(role_id: int):
         con.execute("DELETE FROM scores WHERE role_id=?", (role_id,))
     con.close()
     return {"ok": True}
+
+
+@app.get("/api/digest")
+def digest(days: int = 7):
+    """Numbers for the weekly digest. Rejections are a count only, by design."""
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+    con = db.connect()
+    def one(q, *a):
+        return con.execute(q, a).fetchone()[0]
+    found = one("SELECT COUNT(*) FROM roles WHERE first_seen >= ? AND filtered = 0", since)
+    above = one("SELECT COUNT(*) FROM scores sc JOIN profile p ON p.id=1 WHERE sc.scored_at >= ? AND sc.score >= p.threshold", since)
+    moved = {st: one("SELECT COUNT(*) FROM status WHERE changed_at >= ? AND state=?", since, st)
+             for st in ("shortlisted", "applied", "progressing", "rejected", "declined")}
+    open_now = {st: one("SELECT COUNT(*) FROM status WHERE state=?", st) for st in ("shortlisted", "applied", "progressing")}
+    top = [dict(r) for r in con.execute(
+        """SELECT r.id, r.title, r.company, sc.score, st.state FROM scores sc JOIN roles r ON r.id=sc.role_id
+           LEFT JOIN status st ON st.role_id=r.id JOIN profile p ON p.id=1
+           WHERE sc.scored_at >= ? AND sc.score >= p.threshold AND r.filtered = 0 ORDER BY sc.score DESC LIMIT 5""", (since,))]
+    briefs = one("SELECT COUNT(*) FROM research WHERE status='ready' AND generated_at >= ?", since)
+    docs = one("SELECT COUNT(*) FROM documents WHERE status='ready' AND generated_at >= ?", since)
+    con.close()
+    return {"since": since, "found": found, "above_threshold": above, "moved": moved, "open": open_now,
+            "top": top, "briefs": briefs, "documents": docs}
 
 
 @app.get("/api/sources")

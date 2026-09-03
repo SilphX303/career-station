@@ -91,6 +91,8 @@ export const api = {
   research: (id: number) => j<Research | null>(fetch(`/api/roles/${id}/research`)),
   requestResearch: (id: number) => j<{ ok: boolean }>(fetch(`/api/roles/${id}/research`, { method: 'POST' })),
   docs: (id: number) => j<Doc[]>(fetch(`/api/roles/${id}/documents`)),
+  editDoc: (docId: number, content: string) =>
+    j<{ ok: boolean }>(fetch(`/api/documents/${docId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content }) })),
   requestDoc: (id: number, kind: 'cv' | 'cover') =>
     j<{ id: number; status: string }>(fetch(`/api/roles/${id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) })),
   profile: () => j<Profile>(fetch('/api/profile')),

@@ -145,11 +145,11 @@ Stored in the DB but exportable and importable as a file so it can be edited out
 
 ### Phase 2: pipeline sync
 - Read the Gmail Job Search labels (Applied, Progressing, Rejected, Declined) and update role status. Match on company and title, fuzzy. Decision: the sweep (a scheduled chat using the Gmail connector) posts its findings to `POST /api/sync/status` via a curl run on the Claude Box through `arkadia_run_command`, so the call stays on the LAN and the app needs no auth. Longer term the sweep may move onto the bot with its own Gmail access. The endpoint fuzzy-matches company then title, never downgrades progressing or a rejection, and returns matched and unmatched lists so the sweep can report what it could not place.
-- Weekly digest
+- Weekly digest (done)
 
 ### Phase 3: documents
 - 3a (done): `POST /api/roles/{id}/documents {kind}` queues a request; `GET /api/queue/documents` gives the bot the role, ad, score, gaps, profile and the base CV for the track; `PUT /api/documents/{id}` returns markdown. Card shows drafting / view / copy / redo. Profile page holds the two base CVs.
-- 3b: DOCX and PDF export of a ready document, server-side. Edit-in-place before export.
+- 3b (done): PDF export and edit-in-place. DOCX only if a portal demands it.
 
 ### Phase 4: research (done)
 - `POST /api/roles/{id}/research` queues; scoring at or above threshold queues automatically. `GET /api/queue/research` for the bot, `PUT /api/roles/{id}/research` result. Brief rendered in the sheet alongside fit, gaps and documents, which is the interview-prep view.
