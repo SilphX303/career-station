@@ -129,6 +129,7 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
             <div className="min-w-0 flex-1">
               <h2 className="text-lg leading-tight text-glow">{role.title}</h2>
               <p className="mt-1 text-sm text-dim">
+                {role.watch === 1 && <span className="lcars-code mr-2 border border-lavender px-1 text-lavender">Watchlist</span>}
                 {isAgency(role) && <span className="lcars-code mr-2 border border-line-hi px-1">Agency</span>}
                 {role.company ?? 'Unknown company'}{role.location ? `, ${role.location}` : ''}
               </p>

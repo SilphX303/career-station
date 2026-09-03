@@ -14,7 +14,7 @@ async def discord(role: dict, score: int, reasons: list[str]) -> bool:
         f"£{role['salary_min']:,} to £{role['salary_max']:,}" if role.get("salary_min") and role.get("salary_max")
         else "salary not stated")
     lines = [
-        f"**{score}**  {role['title']}",
+        f"**{score}**  {role['title']}" + ("  (watchlist)" if role.get("watch") else ""),
         f"{role.get('company') or 'Unknown company'}, {role.get('location') or ''}, {sal}",
         *[f"- {r}" for r in reasons[:2]],
         f"{base}/?role={role['id']}" if base else role["url"],

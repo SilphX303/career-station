@@ -20,6 +20,7 @@ export type Role = {
   doc_cv?: string | null
   doc_cover?: string | null
   desc_quality?: string | null
+  watch?: number
   brief_status?: string | null
   red_flags?: number
   ai_interview?: string | null
@@ -54,6 +55,7 @@ export type Profile = {
   markdown: string
   cv_engineer: string
   cv_management: string
+  watchlist: string[]
   search_terms: string[]
   filters: { salary_floor?: number; locations?: string[]; exclude_terms?: string[] }
   threshold: number

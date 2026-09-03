@@ -52,10 +52,11 @@ def _migrate(con: sqlite3.Connection) -> None:
     wanted = {
         "roles": {"salary_text": "TEXT", "remote_flag": "INTEGER NOT NULL DEFAULT 0",
                   "filtered": "INTEGER NOT NULL DEFAULT 0", "filter_reason": "TEXT",
-                  "desc_quality": "TEXT", "desc_reason": "TEXT"},
+                  "desc_quality": "TEXT", "desc_reason": "TEXT", "watch": "INTEGER NOT NULL DEFAULT 0"},
         "sources": {"last_error": "TEXT"},
         "scores": {"track": "TEXT"},
-        "profile": {"cv_engineer": "TEXT NOT NULL DEFAULT ''", "cv_management": "TEXT NOT NULL DEFAULT ''"},
+        "profile": {"cv_engineer": "TEXT NOT NULL DEFAULT ''", "cv_management": "TEXT NOT NULL DEFAULT ''",
+                    "watchlist": "TEXT NOT NULL DEFAULT '[]'"},
     }
     for table, cols in wanted.items():
         have = {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}

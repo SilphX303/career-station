@@ -9,15 +9,18 @@ import httpx
 from . import db
 from . import filters, fulltext
 from .sources import REGISTRY
+from .sources.watchlist import parse_entry
 
 log = logging.getLogger("career.crawl")
 
 
 async def run_all() -> dict:
     con = db.connect()
-    prof = con.execute("SELECT search_terms, filters FROM profile WHERE id=1").fetchone()
+    prof = con.execute("SELECT search_terms, filters, watchlist FROM profile WHERE id=1").fetchone()
     terms = json.loads(prof["search_terms"]) if prof else []
     filt = json.loads(prof["filters"]) if prof else {}
+    watch_entries = json.loads(prof["watchlist"]) if prof else []
+    watch_names = {(_wn(parse_entry(e)["name"] or parse_entry(e)["slug"])) for e in watch_entries if e.strip()}
     env = dict(os.environ)
     summary = {}
     to_fill: list[tuple[int, str, str | None, str]] = []
@@ -26,7 +29,7 @@ async def run_all() -> dict:
         row = con.execute("SELECT id, enabled FROM sources WHERE name=?", (name,)).fetchone()
         if not row["enabled"]:
             continue
-        src = cls(terms, env)
+        src = cls(terms, env, watch_entries) if name == "watchlist" else cls(terms, env)
         roles = await src.fetch()
         new = 0
         ts = db.now()
@@ -39,19 +42,21 @@ async def run_all() -> dict:
                     con.execute(
                         """UPDATE roles SET last_seen=?,
                            description=COALESCE(NULLIF(description,''), ?),
-                           salary_min=COALESCE(salary_min, ?), salary_max=COALESCE(salary_max, ?)
+                           salary_min=COALESCE(salary_min, ?), salary_max=COALESCE(salary_max, ?),
+                           watch=MAX(watch, ?)
                            WHERE id=?""",
-                        (ts, r.description, r.salary_min, r.salary_max, exists["id"]))
+                        (ts, r.description, r.salary_min, r.salary_max, int(name == "watchlist" or _wn(r.company) in watch_names), exists["id"]))
                     continue
                 fl, why = filters.apply(r.__dict__, filt)
                 dq, dr = fulltext.assess(r.description)
+                watch = int(name == "watchlist" or _wn(r.company) in watch_names)
                 cur = con.execute(
                     """INSERT INTO roles (source_id, external_id, url, title, company, location, remote_flag,
                        salary_min, salary_max, salary_text, description, posted_at, first_seen, last_seen, hash,
-                       filtered, filter_reason, desc_quality, desc_reason)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       filtered, filter_reason, desc_quality, desc_reason, watch)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (row["id"], r.external_id, r.url, r.title, r.company, r.location, int(r.remote_flag),
-                     r.salary_min, r.salary_max, r.salary_text, r.description, r.posted_at, ts, ts, h, int(fl), why, dq, dr),
+                     r.salary_min, r.salary_max, r.salary_text, r.description, r.posted_at, ts, ts, h, int(fl), why, dq, dr, watch),
                 )
                 con.execute("INSERT OR IGNORE INTO status (role_id, state, changed_at) VALUES (?, 'new', ?)", (cur.lastrowid, ts))
                 new += 1
@@ -94,3 +99,10 @@ async def fill_descriptions(con, items, env, cap: int = 60) -> dict:
                 failed += 1
                 log.info("fulltext %s %s: %s", source, rid, e)
     return {"filled": ok, "skipped": skipped, "failed": failed, "queued": len(items)}
+
+
+def _wn(name: str | None) -> str:
+    import re
+    s = re.sub(r"[^a-z0-9 ]+", " ", (name or "").lower())
+    s = re.sub(r"\b(ltd|limited|plc|uk|the|inc|group)\b", "", s)
+    return re.sub(r"\s+", " ", s).strip()

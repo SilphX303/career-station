@@ -85,6 +85,7 @@ class ProfileIn(BaseModel):
     markdown: str | None = None
     cv_engineer: str | None = None
     cv_management: str | None = None
+    watchlist: list[str] | None = None
     search_terms: list[str] | None = None
     filters: dict | None = None
     threshold: int | None = None
@@ -99,7 +100,7 @@ def health():
 def list_roles(state: str | None = None, limit: int = 200):
     con = db.connect()
     q = """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
-                  r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, r.desc_quality, s.name AS source,
+                  r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, r.desc_quality, r.watch, s.name AS source,
                   sc.score, sc.reasons, sc.track, st.state,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cv' ORDER BY d.id DESC LIMIT 1) AS doc_cv,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover,
@@ -175,7 +176,7 @@ def queue_unscored(limit: int = 40):
     prof = get_profile()
     rows = [dict(r) for r in con.execute(
         """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
-                  r.url, r.description, r.posted_at, r.desc_quality, r.desc_reason
+                  r.url, r.description, r.posted_at, r.desc_quality, r.desc_reason, r.watch
            FROM roles r LEFT JOIN scores sc ON sc.role_id = r.id LEFT JOIN status st ON st.role_id = r.id
            WHERE r.filtered = 0 AND sc.role_id IS NULL
              AND (st.state IS NULL OR st.state NOT IN ('dismissed','rejected','declined'))
@@ -197,6 +198,8 @@ async def put_score(role_id: int, body: ScoreIn):
         con.close()
         raise HTTPException(404)
     thr = con.execute("SELECT threshold FROM profile WHERE id=1").fetchone()["threshold"]
+    if role["watch"]:
+        thr = max(0, thr - 10)
     with con:
         con.execute(
             """INSERT INTO scores (role_id, score, reasons, gaps, scored_at, model, track) VALUES (?,?,?,?,?,?,?)
@@ -531,6 +534,7 @@ def get_profile():
     con.close()
     p["search_terms"] = json.loads(p["search_terms"])
     p["filters"] = json.loads(p["filters"])
+    p["watchlist"] = json.loads(p.get("watchlist") or "[]")
     return p
 
 
@@ -544,11 +548,19 @@ def put_profile(body: ProfileIn):
     thr = body.threshold if body.threshold is not None else cur["threshold"]
     cve = body.cv_engineer if body.cv_engineer is not None else cur["cv_engineer"]
     cvm = body.cv_management if body.cv_management is not None else cur["cv_management"]
+    wl = body.watchlist if body.watchlist is not None else cur["watchlist"]
     with con:
         con.execute(
-            "UPDATE profile SET markdown=?, search_terms=?, filters=?, threshold=?, cv_engineer=?, cv_management=?, updated_at=? WHERE id=1",
-            (md, json.dumps(terms), json.dumps(filt), thr, cve, cvm, db.now()),
+            "UPDATE profile SET markdown=?, search_terms=?, filters=?, threshold=?, cv_engineer=?, cv_management=?, watchlist=?, updated_at=? WHERE id=1",
+            (md, json.dumps(terms), json.dumps(filt), thr, cve, cvm, json.dumps(wl), db.now()),
         )
+        # name-only entries flag roles already in the database
+        from .crawl import _wn
+        from .sources.watchlist import parse_entry
+        names = {_wn(parse_entry(e)["name"] or parse_entry(e)["slug"]) for e in wl if e.strip()}
+        for r in con.execute("SELECT id, company FROM roles WHERE watch=0"):
+            if _wn(r["company"]) in names:
+                con.execute("UPDATE roles SET watch=1 WHERE id=?", (r["id"],))
     con.close()
     return get_profile()
 

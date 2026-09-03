@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS roles (
   filtered INTEGER NOT NULL DEFAULT 0,
   filter_reason TEXT,
   desc_quality TEXT,
-  desc_reason TEXT
+  desc_reason TEXT,
+  watch INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS scores (
   role_id INTEGER PRIMARY KEY REFERENCES roles(id),
@@ -78,6 +79,7 @@ CREATE TABLE IF NOT EXISTS profile (
   threshold INTEGER NOT NULL DEFAULT 75,
   cv_engineer TEXT NOT NULL DEFAULT '',
   cv_management TEXT NOT NULL DEFAULT '',
+  watchlist TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_roles_last_seen ON roles(last_seen);
