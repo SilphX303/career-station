@@ -1,19 +1,235 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
+/* ============================================================
+   career-station design system: Picard-era LCARS, shared with
+   Cupid Station and Starbase. Hairline-technical, elbows retired,
+   hairline-technical, elbows retired, 2px radii, desaturated
+   amber/lavender on near-black. Token NAMES are stable API.
+   ============================================================ */
+
+/* `static` — emit every token even when no utility references it; several are
+   consumed via inline style="var(--color-…)" and would otherwise be tree-shaken */
 @theme static {
-  --color-ink: #12151C;
-  --color-surface: #1A1F29;
-  --color-line: #262C38;
-  --color-paper: #E9E4DA;
-  --color-muted: #8C929E;
-  --color-amber: #F0A93B;
-  --color-sage: #7DB893;
-  --color-rust: #C96A4A;
-  --font-sans: "Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --color-space: #0a0d12;        /* page background */
+  --color-panel: #10161e;        /* panel surface */
+  --color-panel-2: #171f2a;      /* raised surface, inputs */
+  --color-amber: #d68f4a;        /* section accent, register codes, stardate */
+  --color-orange: #b86a3a;       /* deep ember */
+  --color-lavender: #6ea9d4;     /* primary data blue — all active/hover states */
+  --color-mauve: #7a8a9a;        /* chrome slate */
+  --color-salmon: #c4b99a;       /* cream readout */
+  --color-teal: #5a9aa8;         /* muted teal */
+  --color-glow: #c4d1dc;         /* ink (primary text) */
+  --color-dim: #6b7b8c;          /* ink-dim (secondary text) */
+  --color-alert: #c84848;        /* alert red */
+  --color-sage: #7fae8e;         /* career addition: salary clears the floor */
+  --color-rail: #141a23;         /* inert structure */
+  --color-faint: #3f4a57;        /* ink-faint (register codes) */
+  --color-line: #1c2632;         /* hairline */
+  --color-line-hi: #2a3746;      /* hairline emphasis — the workhorse border */
+  --color-line-faint: #151d27;   /* hairline subtle */
+  --color-blue-faint: #1e3a52;   /* active fill, selection bg */
+
+  --font-display: 'Antonio', 'Arial Narrow', 'Avenir Next Condensed', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --radius-lcars: 2px;
+
+  --tracking-lcars: 0.14em;
+
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-normal: 300ms;
+  --ease-lcars: ease;
 }
 
-html { background: var(--color-ink); color: var(--color-paper); }
-body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
-button:focus-visible, a:focus-visible { outline: 2px solid var(--color-amber); outline-offset: 2px; }
-.tnum { font-variant-numeric: tabular-nums; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+:root {
+  --frame-top: 38px;
+  --frame-rail: 168px;
+  --frame-foot: 24px;
+  --frame-gap: 6px;
+  --nav-row: 26px;
+}
+
+/* ---------- base ---------- */
+
+html {
+  letter-spacing: 0.025em;
+  background: var(--color-space);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--color-glow);
+  background: var(--color-space);
+}
+
+h1, h2, h3 {
+  letter-spacing: var(--tracking-lcars);
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+::selection { background: var(--color-blue-faint); color: var(--color-glow); }
+
+:focus-visible {
+  outline: 1px dashed var(--color-lavender);
+  outline-offset: 2px;
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--color-line-hi) transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-line-hi); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-faint); }
+
+/* ---------- lcars component classes ---------- */
+
+.lcars-panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line-hi);
+  border-radius: var(--radius-lcars);
+  overflow: hidden;
+  animation: lcars-in var(--duration-fast) ease-out both;
+}
+
+.lcars-label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--color-dim);
+}
+
+.lcars-code {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-faint);
+  white-space: nowrap;
+}
+
+.lcars-readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.lcars-pill {
+  border-radius: var(--radius-lcars);
+  border: 1px solid var(--color-line-hi);
+  transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease,
+    background-color var(--duration-fast) ease;
+}
+.lcars-pill:hover { border-color: var(--color-lavender); color: var(--color-lavender); }
+
+.lcars-input {
+  background: #0e131a;
+  border: 1px solid var(--color-line-hi);
+  border-radius: var(--radius-lcars);
+  color: var(--color-glow);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.375rem 0.5rem;
+  transition: border-color var(--duration-fast) ease;
+}
+.lcars-input:hover, .lcars-input:focus { border-color: var(--color-lavender); outline: none; }
+.lcars-input::placeholder { color: var(--color-faint); }
+
+.bar-track {
+  background: #0e131a;
+  border: 1px solid var(--color-line-faint);
+  border-radius: 0;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 0;
+  transform-origin: left;
+  opacity: 0.55;
+  border-right: 1px solid currentColor;
+  animation: bar-grow var(--duration-normal) ease-out both;
+}
+
+.lcars-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1px;
+}
+.lcars-divider > * { height: 1px; flex: 1; }
+
+/* Single allowed "alive" indicator */
+.alive-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--color-lavender);
+  animation: alive 2.4s ease-in-out infinite;
+}
+
+/* ---------- alert modes (root-class token overrides) ---------- */
+
+/* Yellow alert = something in Action needed: amber-tinted hairlines only */
+.yellow-alert {
+  --color-line: #2a2416;
+  --color-line-hi: #4a3d1e;
+  --color-line-faint: #201c12;
+}
+
+.red-alert {
+  --color-space: #0a0406; --color-panel: #15070a; --color-panel-2: #1c0a0e;
+  --color-rail: #140a0d; --color-lavender: #e85a5a; --color-amber: #c84848;
+  --color-orange: #c84848; --color-teal: #a85a5a; --color-mauve: #8a5a5a;
+  --color-salmon: #c8a4a4; --color-glow: #e8c4c4; --color-dim: #8a5a5a;
+  --color-faint: #573f3f; --color-line: #2a0d10; --color-line-hi: #4a1418;
+  --color-line-faint: #1c0a0c; --color-blue-faint: #3a1215;
+  animation: red-alert-pulse 1.6s ease-in-out infinite;
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes lcars-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes alive { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+@keyframes alert-blink { 50% { opacity: 0.4; } }
+@keyframes red-alert-pulse {
+  0%, 100% { background-color: var(--color-space); }
+  50% { background-color: #1a0608; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- career-station additions ---------- */
+
+.sheet-enter { animation: sheet-up var(--duration-normal) ease-out both; }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.lcars-btn {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 0.55rem 0.9rem;
+  white-space: nowrap;
+  border: 1px solid var(--color-line-hi);
+  border-radius: var(--radius-lcars);
+  color: var(--color-glow);
+  background: var(--color-panel-2);
+  transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease, background-color var(--duration-fast) ease;
+}
+.lcars-btn:hover:not(:disabled) { border-color: var(--color-lavender); color: var(--color-lavender); }
+.lcars-btn:disabled { opacity: 0.45; }
+.lcars-btn-primary { border-color: var(--color-amber); color: var(--color-amber); }
+.lcars-btn-primary:hover:not(:disabled) { background: var(--color-amber); color: var(--color-space); border-color: var(--color-amber); }
+.lcars-btn-quiet { border-color: transparent; background: transparent; color: var(--color-dim); }
+
+.lcars-prose { font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.6; color: var(--color-salmon); white-space: pre-wrap; }

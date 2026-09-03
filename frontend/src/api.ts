@@ -17,6 +17,8 @@ export type Role = {
   state: string | null
   filtered: number
   filter_reason: string | null
+  doc_cv?: string | null
+  doc_cover?: string | null
 }
 
 export type Doc = {

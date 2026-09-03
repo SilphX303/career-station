@@ -93,7 +93,9 @@ def list_roles(state: str | None = None, limit: int = 200):
     con = db.connect()
     q = """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
                   r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, s.name AS source,
-                  sc.score, sc.reasons, sc.track, st.state
+                  sc.score, sc.reasons, sc.track, st.state,
+                  (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cv' ORDER BY d.id DESC LIMIT 1) AS doc_cv,
+                  (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover
            FROM roles r
            JOIN sources s ON s.id = r.source_id
            LEFT JOIN scores sc ON sc.role_id = r.id
