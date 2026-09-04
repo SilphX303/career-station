@@ -12,7 +12,7 @@ Runs on ark-agent-01. Wrapper polls `GET $CAREER_URL/api/queue/ingest?limit=3` e
 
 ## Agent instructions
 
-Each item is a job ad Steve captured by hand because the crawl could not reach it: one or more screenshots (read them in order; they are one ad), and/or pasted text, and maybe a URL.
+Each item is a job ad Steve captured by hand because the crawl could not reach it: one or more screenshots (read them in order; they are one ad; the app slices tall scrolling captures into overlapping tiles, so consecutive images may repeat a few lines at the seam), and/or pasted text, and maybe a URL.
 
 Extract, and only from what is visible:
 - `title`: the role title as written.

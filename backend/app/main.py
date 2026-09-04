@@ -672,6 +672,39 @@ def _create_manual_role(con, fields: dict, source_name: str, images: list[str]) 
     return rid
 
 
+def _store_image(data: bytes, ext: str) -> list[str]:
+    """Save an upload. Tall scrolling captures are sliced into overlapping tiles so vision can read the body text."""
+    import io
+    import secrets
+    from PIL import Image
+    MAX_W, TILE_H, OVERLAP = 1400, 1500, 120
+    stem = f"{db.now()[:10]}-{secrets.token_hex(4)}"
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.load()
+    except Exception:  # noqa: BLE001
+        (INGEST_DIR / f"{stem}{ext}").write_bytes(data)
+        return [f"{stem}{ext}"]
+    if im.mode not in ("RGB", "L"):
+        im = im.convert("RGB")
+    if im.width > MAX_W:
+        im = im.resize((MAX_W, round(im.height * MAX_W / im.width)))
+    if im.height <= TILE_H * 1.25:
+        name = f"{stem}.png"
+        im.save(INGEST_DIR / name, "PNG", optimize=True)
+        return [name]
+    names = []
+    y, i = 0, 0
+    while y < im.height:
+        tile = im.crop((0, y, im.width, min(im.height, y + TILE_H)))
+        name = f"{stem}-{i:02d}.png"
+        tile.save(INGEST_DIR / name, "PNG", optimize=True)
+        names.append(name)
+        i += 1
+        y += TILE_H - OVERLAP
+    return names
+
+
 @app.post("/api/ingest")
 async def ingest(text: str | None = Form(None), url: str | None = Form(None), files: list[UploadFile] = File(default=[])):
     """Add a role by hand: screenshots (bot reads them), pasted ad text, or both. URL optional."""
@@ -684,10 +717,7 @@ async def ingest(text: str | None = Form(None), url: str | None = Form(None), fi
         data = await f.read()
         if len(data) > 8 * 1024 * 1024:
             raise HTTPException(400, "image over 8 MB")
-        import secrets
-        name = f"{db.now()[:10]}-{secrets.token_hex(4)}{ext}".replace(":", "")
-        (INGEST_DIR / name).write_bytes(data)
-        imgs.append(name)
+        imgs.extend(_store_image(data, ext))
     if not imgs and not (text and text.strip()):
         raise HTTPException(400, "give me a screenshot or some ad text")
     con = db.connect()
