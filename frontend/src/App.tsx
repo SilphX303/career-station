@@ -26,16 +26,19 @@ export default function App() {
   const [openId, setOpenId] = useState<number | null>(null)
   const [nudges, setNudges] = useState<Nudges | null>(null)
   const [adding, setAdding] = useState(false)
+  const [q, setQ] = useState('')
+  const [qDebounced, setQDebounced] = useState('')
+  useEffect(() => { const t = setTimeout(() => setQDebounced(q.trim()), 250); return () => clearTimeout(t) }, [q])
 
   const load = useCallback(async () => {
     try {
-      const [r, s, p] = await Promise.all([api.roles(filter || undefined), api.sources(), api.profile()])
+      const [r, s, p] = await Promise.all([api.roles(filter || undefined, qDebounced || undefined), api.sources(), api.profile()])
       setRoles(r); setSources(s); setThreshold(p.threshold); setErr(null)
       api.nudges().then(setNudges).catch(() => undefined)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     }
-  }, [filter])
+  }, [filter, qDebounced])
 
   useEffect(() => { void load() }, [load])
 
@@ -97,6 +100,12 @@ export default function App() {
             ))}
           </nav>
 
+          <div className="mb-2 flex items-center gap-2">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, company, location, ad text" className="lcars-input w-full" />
+            {q && <button onClick={() => setQ('')} className="lcars-btn lcars-btn-quiet">Clear</button>}
+          </div>
+          {qDebounced && <p className="lcars-code mb-2">Searching every state, not just this tab</p>}
+
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
             <label className="flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-dim">
               <input type="checkbox" checked={directOnly} onChange={(e) => setDirectOnly(e.target.checked)} className="accent-lavender" />
@@ -119,7 +128,7 @@ export default function App() {
 
           {err && <p className="mb-3 border border-alert px-3 py-2 text-xs text-alert">{err}</p>}
 
-          {nudges && (nudges.stale_applied.length + nudges.progressing.length + nudges.flagged_open.length) > 0 && filter === '' && (
+          {nudges && (nudges.stale_applied.length + nudges.progressing.length + nudges.flagged_open.length) > 0 && filter === '' && !qDebounced && (
             <div className="lcars-panel mb-3 p-3">
               <div className="lcars-label mb-2">Needs you</div>
               <ul className="space-y-1 text-sm">
@@ -154,6 +163,7 @@ export default function App() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
                           <span className="truncate text-[15px] text-glow">{r.title}</span>
+                          {qDebounced && r.state && r.state !== 'new' && <span className="lcars-code shrink-0 text-lavender">{r.state}</span>}
                           {(r.cluster_size ?? 0) > 0 && <span className="lcars-code shrink-0 text-mauve">×{(r.cluster_size ?? 0) + 1}</span>}
                           {r.watch === 1 && <span className="lcars-code shrink-0 text-lavender">WATCH</span>}
                           {r.track && <span className={`lcars-code shrink-0 ${trackText(r.track)}`}>{trackCode(r.track)}</span>}

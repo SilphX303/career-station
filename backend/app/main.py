@@ -46,6 +46,7 @@ class ScoreIn(BaseModel):
     gaps: list[str] = []
     model: str | None = None
     track: str | None = None
+    run_id: str | None = None
 
 
 class BatchScore(ScoreIn):
@@ -54,6 +55,7 @@ class BatchScore(ScoreIn):
 
 class BatchIn(BaseModel):
     scores: list[BatchScore]
+    run_id: str | None = None
 
 
 class SyncItem(BaseModel):
@@ -101,11 +103,12 @@ def health():
 
 
 @app.get("/api/roles")
-def list_roles(state: str | None = None, limit: int = 200):
+def list_roles(state: str | None = None, limit: int = 200, q: str | None = None):
+    search = (q or "").strip()
     con = db.connect()
     q = """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
                   r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, r.desc_quality, r.watch, s.name AS source,
-                  sc.score, sc.reasons, sc.track, st.state,
+                  sc.score, sc.reasons, sc.track, sc.scored_at, sc.run_id, sc.model AS score_model, st.state,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cv' ORDER BY d.id DESC LIMIT 1) AS doc_cv,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='prep' ORDER BY d.id DESC LIMIT 1) AS doc_prep,
@@ -119,7 +122,13 @@ def list_roles(state: str | None = None, limit: int = 200):
            WHERE 1=1"""
     args: list = []
     q += " AND r.cluster_id IS NULL"
-    if state == "filtered":
+    if search:
+        # searching spans every state; each word must appear somewhere in title, company, location or the ad
+        for word in search.split()[:6]:
+            q += " AND (r.title LIKE ? OR COALESCE(r.company,'') LIKE ? OR COALESCE(r.location,'') LIKE ? OR COALESCE(r.description,'') LIKE ?)"
+            args.extend([f"%{word}%"] * 4)
+        q += " AND r.filtered = 0"
+    elif state == "filtered":
         q += " AND r.filtered = 1"
     elif state:
         q += " AND r.filtered = 0 AND st.state = ?"
@@ -142,7 +151,7 @@ def list_roles(state: str | None = None, limit: int = 200):
 def get_role(role_id: int):
     con = db.connect()
     r = con.execute(
-        """SELECT r.*, s.name AS source, sc.score, sc.reasons, sc.gaps, sc.track, st.state, st.note
+        """SELECT r.*, s.name AS source, sc.score, sc.reasons, sc.gaps, sc.track, sc.scored_at, sc.run_id, sc.model AS score_model, st.state, st.note
            FROM roles r JOIN sources s ON s.id=r.source_id
            LEFT JOIN scores sc ON sc.role_id=r.id LEFT JOIN status st ON st.role_id=r.id
            WHERE r.id=?""", (role_id,)).fetchone()
@@ -203,6 +212,23 @@ def dismissal_patterns(con, limit: int = 40) -> dict:
     return {"total": len(rows), "by_reason": {k: {"count": len(v), "examples": v[:5]} for k, v in by.items()}}
 
 
+@app.get("/api/scores/recent")
+def scores_recent(limit: int = 50, run_id: str | None = None):
+    """What scoring touched, newest first. Filter by run_id to audit one pass."""
+    con = db.connect()
+    q = """SELECT sc.role_id, sc.score, sc.track, sc.scored_at, sc.run_id, sc.model, r.title, r.company
+           FROM scores sc JOIN roles r ON r.id=sc.role_id"""
+    args: list = []
+    if run_id:
+        q += " WHERE sc.run_id = ?"
+        args.append(run_id)
+    q += " ORDER BY sc.scored_at DESC LIMIT ?"
+    args.append(limit)
+    rows = [dict(r) for r in con.execute(q, args)]
+    con.close()
+    return rows
+
+
 @app.get("/api/queue/unscored")
 def queue_unscored(limit: int = 40):
     """For the scoring bot: roles that passed filters and have no score yet. Includes the profile."""
@@ -237,10 +263,10 @@ async def put_score(role_id: int, body: ScoreIn):
         thr = max(0, thr - 10)
     with con:
         con.execute(
-            """INSERT INTO scores (role_id, score, reasons, gaps, scored_at, model, track) VALUES (?,?,?,?,?,?,?)
+            """INSERT INTO scores (role_id, score, reasons, gaps, scored_at, model, track, run_id) VALUES (?,?,?,?,?,?,?,?)
                ON CONFLICT(role_id) DO UPDATE SET score=excluded.score, reasons=excluded.reasons,
-               gaps=excluded.gaps, scored_at=excluded.scored_at, model=excluded.model, track=excluded.track""",
-            (role_id, body.score, json.dumps(body.reasons), json.dumps(body.gaps), db.now(), body.model, body.track),
+               gaps=excluded.gaps, scored_at=excluded.scored_at, model=excluded.model, track=excluded.track, run_id=excluded.run_id""",
+            (role_id, body.score, json.dumps(body.reasons), json.dumps(body.gaps), db.now(), body.model, body.track, body.run_id),
         )
     notified = False
     if body.score >= thr:
@@ -266,13 +292,15 @@ async def post_scores_batch(body: BatchIn):
     con.close()
     for item in body.scores:
         try:
-            r = await put_score(item.role_id, ScoreIn(**item.model_dump(exclude={"role_id"})))
+            payload = item.model_dump(exclude={"role_id"})
+            payload["run_id"] = payload.get("run_id") or body.run_id
+            r = await put_score(item.role_id, ScoreIn(**payload))
             ok.append(item.role_id)
             notified += int(bool(r.get("notified")))
             above += int(item.score >= thr)
         except HTTPException as e:
             failed.append({"role_id": item.role_id, "why": e.detail})
-    return {"scored": len(ok), "above_threshold": above, "failed": failed, "notified": notified}
+    return {"scored": len(ok), "role_ids": ok, "above_threshold": above, "failed": failed, "notified": notified, "run_id": body.run_id}
 
 
 @app.post("/api/sync/status")

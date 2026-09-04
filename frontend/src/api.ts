@@ -13,6 +13,9 @@ export type Role = {
   source: string
   score: number | null
   track: string | null
+  scored_at?: string | null
+  run_id?: string | null
+  score_model?: string | null
   reasons: string[]
   state: string | null
   filtered: number
@@ -96,7 +99,7 @@ async function j<T>(r: Promise<Response>): Promise<T> {
 }
 
 export const api = {
-  roles: (state?: string) => j<Role[]>(fetch(`/api/roles${state ? `?state=${state}` : ''}`)),
+  roles: (state?: string, q?: string) => j<Role[]>(fetch(`/api/roles?${new URLSearchParams({ ...(state ? { state } : {}), ...(q ? { q } : {}) })}`)),
   role: (id: number) => j<RoleDetail>(fetch(`/api/roles/${id}`)),
   sources: () => j<SourceHealth[]>(fetch('/api/sources')),
   setStatus: (id: number, state: string, reason?: string, note?: string) =>
