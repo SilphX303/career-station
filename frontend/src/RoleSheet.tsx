@@ -148,6 +148,9 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
             <section>
               <div className="lcars-label mb-1.5">Fit</div>
               <p className="text-sm leading-relaxed text-glow">{joinReasons(role.reasons)}</p>
+              {role.scored_at && (
+                <p className="lcars-code mt-1">scored {agoLong(role.scored_at)}{role.run_id ? ` · run ${role.run_id}` : ''}{role.score_model ? ` · ${role.score_model.replace('claude-', '')}` : ''}</p>
+              )}
             </section>
           )}
 

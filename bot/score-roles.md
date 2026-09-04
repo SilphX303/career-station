@@ -29,14 +29,14 @@ Env: `CAREER_URL` (https://career.arkadia.network, https not http; http redirect
    If a role has `watch: 1` it is from a company on Steve's watchlist. Do not inflate the score; the app already notifies at a lower bar for these. Do mention in reasons that it is a target employer.
    If a role has `partial_ad: true`, the description is a stub or cut off (`partial_reason` says why). Score what can be seen but cap the score at 70 and add the gap "Scored on a partial ad" so it never triggers a notification on incomplete information.
 
-3. Output the whole batch as ONE JSON document on stdout and nothing else:
+3. The wrapper generates a run id (`YYMMDD-HHMM-<4 hex>`) per pass and sends it as `run_id` at the top level of the batch. Output the whole batch as ONE JSON document on stdout and nothing else:
    ```json
    {"scores": [{"role_id": 123, "track": "engineer", "score": 88, "reasons": [...], "gaps": [...], "model": "<model name>"}, ...]}
    ```
    The wrapper script submits it with `curl -s -X POST $CAREER_URL/api/scores/batch -H 'content-type: application/json' --data @-`.
    The agent needs no curl, no Write, no scratch files. The app handles notifications; never post to Discord per role.
 
-4. The wrapper logs one line from the response: `scored N roles, M above threshold`. Nothing else. Never report counts of low scores or rejections anywhere Steve reads.
+4. The wrapper logs one line from the response: `run <run_id>: scored N roles [ids], M above threshold`. `GET /api/scores/recent?run_id=<run_id>` shows exactly what that pass wrote. Never report counts of low scores or rejections anywhere Steve reads.
 
 ## Failure handling
 

@@ -54,7 +54,7 @@ def _migrate(con: sqlite3.Connection) -> None:
                   "filtered": "INTEGER NOT NULL DEFAULT 0", "filter_reason": "TEXT",
                   "desc_quality": "TEXT", "desc_reason": "TEXT", "watch": "INTEGER NOT NULL DEFAULT 0", "cluster_id": "INTEGER"},
         "sources": {"last_error": "TEXT"},
-        "scores": {"track": "TEXT"},
+        "scores": {"track": "TEXT", "run_id": "TEXT"},
         "status": {"reason": "TEXT"},
         "profile": {"cv_engineer": "TEXT NOT NULL DEFAULT ''", "cv_management": "TEXT NOT NULL DEFAULT ''",
                     "watchlist": "TEXT NOT NULL DEFAULT '[]'"},
