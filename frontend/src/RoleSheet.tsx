@@ -311,6 +311,19 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
             )}
           </section>
 
+          {detail && (detail.screenshots ?? []).length > 0 && (
+            <section>
+              <div className="lcars-label mb-1.5">Screenshots this was read from</div>
+              <div className="flex flex-wrap gap-2">
+                {detail.screenshots!.map((n) => (
+                  <a key={n} href={`/api/ingest/image/${n}`} target="_blank" rel="noreferrer">
+                    <img src={`/api/ingest/image/${n}`} alt="" className="h-28 rounded-[2px] border border-line-hi object-cover" />
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section>
             <div className="lcars-label mb-1.5">The ad</div>
             {!detail && <p className="text-sm text-dim">Loading</p>}

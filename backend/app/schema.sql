@@ -73,6 +73,20 @@ CREATE TABLE IF NOT EXISTS research (
   model TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_research_status ON research(status);
+CREATE TABLE IF NOT EXISTS ingest (
+  id INTEGER PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'pending',
+  kind TEXT NOT NULL,            -- image | text
+  text TEXT,                     -- pasted ad text, or the bot's extracted text
+  url TEXT,
+  images TEXT NOT NULL DEFAULT '[]',  -- filenames under /data/ingest
+  result TEXT,                   -- structured fields from the bot
+  role_id INTEGER REFERENCES roles(id),
+  error TEXT,
+  requested_at TEXT NOT NULL,
+  done_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ingest_status ON ingest(status);
 CREATE TABLE IF NOT EXISTS profile (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   markdown TEXT NOT NULL DEFAULT '',

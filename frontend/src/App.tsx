@@ -3,6 +3,7 @@ import { api, type Nudges, type Role, type SourceHealth } from './api'
 import { ago, aboveFloor, isAgency, salaryShort, trackBg, trackCode, trackText } from './format'
 import ProfilePage from './Profile'
 import RoleSheet from './RoleSheet'
+import AddRole from './AddRole'
 
 const FILTERS: { key: string; label: string; code: string }[] = [
   { key: '', label: 'Worth a look', code: '01' },
@@ -24,6 +25,7 @@ export default function App() {
   const [err, setErr] = useState<string | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
   const [nudges, setNudges] = useState<Nudges | null>(null)
+  const [adding, setAdding] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -74,6 +76,7 @@ export default function App() {
         </div>
         <div className="flex shrink-0 gap-1.5">
           <button onClick={() => setView(view === 'roles' ? 'profile' : 'roles')} className="lcars-btn lcars-btn-quiet">{view === 'roles' ? 'Profile' : 'Roles'}</button>
+          {view === 'roles' && <button onClick={() => setAdding(true)} className="lcars-btn lcars-btn-primary">Add</button>}
           {view === 'roles' && <button onClick={crawl} disabled={busy} className="lcars-btn">{busy ? 'Searching' : 'Search'}</button>}
         </div>
       </header>
@@ -171,7 +174,7 @@ export default function App() {
                       </div>
                       <div className="w-[76px] shrink-0 text-right sm:w-auto">
                         <div className={`lcars-readout truncate text-xs ${aboveFloor(r) ? 'text-sage' : 'text-dim'}`}>{salaryShort(r)}</div>
-                        <div className="lcars-code mt-0.5">{r.source} {ago(r.first_seen)}</div>
+                        <div className="lcars-code mt-0.5">{r.source === 'screenshot' || r.source === 'pasted' ? 'MANUAL' : r.source} {ago(r.first_seen)}</div>
                       </div>
                     </button>
                   </li>
@@ -182,6 +185,7 @@ export default function App() {
         </>
       )}
 
+      {adding && <AddRole onClose={() => setAdding(false)} onAdded={() => void load()} />}
       {openRole && <RoleSheet role={openRole} threshold={threshold} onClose={() => setOpenId(null)} onStatus={act} />}
 
       <footer className="fixed inset-x-0 bottom-0 border-t border-line bg-space/95 px-3 py-1.5 backdrop-blur sm:px-4">

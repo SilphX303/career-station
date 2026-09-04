@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -156,6 +156,8 @@ def get_role(role_id: int):
     d["truncated"] = q == "partial" and bool(d.get("url"))
     d["desc_reason"] = why
     con2 = db.connect()
+    ing = con2.execute("SELECT images FROM ingest WHERE role_id=?", (role_id,)).fetchone()
+    d["screenshots"] = json.loads(ing["images"]) if ing else []
     head = d["cluster_id"] or role_id
     d["also_posted"] = [dict(m) for m in con2.execute(
         """SELECT r.id, r.company, r.url, r.salary_min, r.salary_max, r.location, r.first_seen, s.name AS source
@@ -618,6 +620,139 @@ def cluster_now():
     out = cluster.run(con)
     con.close()
     return out
+
+
+INGEST_DIR = db.DATA_DIR / "ingest"
+ALLOWED_IMG = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+
+
+class IngestResult(BaseModel):
+    status: str = "ready"  # ready | failed
+    title: str | None = None
+    company: str | None = None
+    location: str | None = None
+    remote: bool | None = None
+    salary_min: int | None = None
+    salary_max: int | None = None
+    salary_text: str | None = None
+    description: str | None = None
+    url: str | None = None
+    error: str | None = None
+    model: str | None = None
+
+
+def _create_manual_role(con, fields: dict, source_name: str, images: list[str]) -> int:
+    import hashlib
+    import json as _json
+    from . import filters as _filters, fulltext as _fulltext
+    prof = con.execute("SELECT filters FROM profile WHERE id=1").fetchone()
+    filt = _json.loads(prof["filters"]) if prof else {}
+    con.execute("INSERT OR IGNORE INTO sources (name, kind, enabled) VALUES (?, 'manual', 0)", (source_name,))
+    sid = con.execute("SELECT id FROM sources WHERE name=?", (source_name,)).fetchone()["id"]
+    ts = db.now()
+    title = fields.get("title") or "Role (title unknown)"
+    company = fields.get("company")
+    loc = fields.get("location")
+    desc = fields.get("description") or ""
+    remote = bool(fields.get("remote")) or "remote" in f"{loc or ''} {desc}".lower()
+    role = {"title": title, "description": desc, "location": loc, "remote_flag": remote,
+            "salary_min": fields.get("salary_min"), "salary_max": fields.get("salary_max")}
+    fl, why = _filters.apply(role, filt)
+    dq, dr = _fulltext.assess(desc)
+    h = hashlib.sha1(f"{source_name}|{company}|{title}|{loc}|{ts}".encode()).hexdigest()
+    cur = con.execute(
+        """INSERT INTO roles (source_id, external_id, url, title, company, location, remote_flag, salary_min, salary_max, salary_text,
+           description, posted_at, first_seen, last_seen, hash, filtered, filter_reason, desc_quality, desc_reason)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (sid, None, fields.get("url") or "", title, company, loc, int(remote), fields.get("salary_min"), fields.get("salary_max"),
+         fields.get("salary_text"), desc, None, ts, ts, h, int(fl), why, dq, dr))
+    rid = cur.lastrowid
+    con.execute("INSERT OR IGNORE INTO status (role_id, state, changed_at, note) VALUES (?, 'new', ?, ?)",
+                (rid, ts, "[screenshot] " + ", ".join(images) if images else None))
+    return rid
+
+
+@app.post("/api/ingest")
+async def ingest(text: str | None = Form(None), url: str | None = Form(None), files: list[UploadFile] = File(default=[])):
+    """Add a role by hand: screenshots (bot reads them), pasted ad text, or both. URL optional."""
+    imgs = []
+    INGEST_DIR.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        ext = ALLOWED_IMG.get(f.content_type or "")
+        if not ext:
+            raise HTTPException(400, f"unsupported image type {f.content_type}")
+        data = await f.read()
+        if len(data) > 8 * 1024 * 1024:
+            raise HTTPException(400, "image over 8 MB")
+        import secrets
+        name = f"{db.now()[:10]}-{secrets.token_hex(4)}{ext}".replace(":", "")
+        (INGEST_DIR / name).write_bytes(data)
+        imgs.append(name)
+    if not imgs and not (text and text.strip()):
+        raise HTTPException(400, "give me a screenshot or some ad text")
+    con = db.connect()
+    with con:
+        cur = con.execute(
+            "INSERT INTO ingest (status, kind, text, url, images, requested_at) VALUES ('pending', ?, ?, ?, ?, ?)",
+            ("image" if imgs else "text", text, url, json.dumps(imgs), db.now()))
+    con.close()
+    return {"id": cur.lastrowid, "status": "pending", "images": len(imgs)}
+
+
+@app.get("/api/ingest")
+def ingest_list(limit: int = 20):
+    con = db.connect()
+    rows = [dict(r) for r in con.execute("SELECT id, status, kind, url, images, role_id, error, requested_at, done_at FROM ingest ORDER BY id DESC LIMIT ?", (limit,))]
+    for r in rows:
+        r["images"] = json.loads(r["images"])
+    con.close()
+    return rows
+
+
+@app.get("/api/ingest/image/{name}")
+def ingest_image(name: str):
+    if "/" in name or ".." in name:
+        raise HTTPException(400)
+    f = INGEST_DIR / name
+    if not f.is_file():
+        raise HTTPException(404)
+    return FileResponse(f)
+
+
+@app.get("/api/queue/ingest")
+def queue_ingest(limit: int = 3):
+    """For the bot: pending items. Images are fetched by the wrapper from /api/ingest/image/{name}."""
+    con = db.connect()
+    rows = [dict(r) for r in con.execute("SELECT id, kind, text, url, images FROM ingest WHERE status='pending' ORDER BY id LIMIT ?", (limit,))]
+    for r in rows:
+        r["images"] = json.loads(r["images"])
+    con.close()
+    return {"items": rows}
+
+
+@app.put("/api/ingest/{ingest_id}")
+def ingest_result(ingest_id: int, body: IngestResult):
+    con = db.connect()
+    it = con.execute("SELECT * FROM ingest WHERE id=?", (ingest_id,)).fetchone()
+    if not it:
+        con.close()
+        raise HTTPException(404)
+    if body.status == "failed" or not (body.title or body.description):
+        with con:
+            con.execute("UPDATE ingest SET status='failed', error=?, done_at=? WHERE id=?",
+                        (body.error or "could not read a role from this", db.now(), ingest_id))
+        con.close()
+        return {"ok": True, "status": "failed"}
+    fields = body.model_dump()
+    fields["url"] = it["url"] or body.url
+    if it["text"] and not fields.get("description"):
+        fields["description"] = it["text"]
+    with con:
+        rid = _create_manual_role(con, fields, "screenshot" if it["kind"] == "image" else "pasted", json.loads(it["images"]))
+        con.execute("UPDATE ingest SET status='ready', result=?, role_id=?, done_at=? WHERE id=?",
+                    (json.dumps(fields), rid, db.now(), ingest_id))
+    con.close()
+    return {"ok": True, "status": "ready", "role_id": rid}
 
 
 @app.get("/api/nudges")

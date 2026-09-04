@@ -5,3 +5,4 @@ apscheduler==3.11.0
 pydantic==2.10.4
 markdown==3.7
 weasyprint==69.0
+python-multipart==0.0.20

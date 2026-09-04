@@ -62,6 +62,8 @@ export type Nudges = {
   flagged_open: { id: number; title: string; company: string | null; state: string; ai_interview: string | null; red: string[] }[]
 }
 
+export type IngestItem = { id: number; status: 'pending' | 'ready' | 'failed'; kind: 'image' | 'text'; url: string | null; images: string[]; role_id: number | null; error: string | null; requested_at: string }
+
 export type Dismissals = { total: number; by_reason: Record<string, { count: number; examples: { title: string; company: string | null }[] }> }
 
 export type Profile = {
@@ -75,7 +77,7 @@ export type Profile = {
   updated_at: string
 }
 
-export type RoleDetail = Role & { description: string | null; gaps: string[]; note: string | null; truncated?: boolean; desc_reason?: string | null; also_posted?: { id: number; company: string | null; url: string; salary_min: number | null; salary_max: number | null; location: string | null; source: string; first_seen: string }[] }
+export type RoleDetail = Role & { description: string | null; gaps: string[]; note: string | null; truncated?: boolean; desc_reason?: string | null; also_posted?: { id: number; company: string | null; url: string; salary_min: number | null; salary_max: number | null; location: string | null; source: string; first_seen: string }[]; screenshots?: string[] }
 
 export type SourceHealth = {
   id: number
@@ -110,6 +112,14 @@ export const api = {
   editDoc: (docId: number, content: string) =>
     j<{ ok: boolean }>(fetch(`/api/documents/${docId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content }) })),
   market: () => j<Market>(fetch('/api/market')),
+  ingest: (files: File[], text?: string, url?: string) => {
+    const fd = new FormData()
+    files.forEach((f) => fd.append('files', f))
+    if (text) fd.append('text', text)
+    if (url) fd.append('url', url)
+    return j<{ id: number; status: string }>(fetch('/api/ingest', { method: 'POST', body: fd }))
+  },
+  ingestList: () => j<IngestItem[]>(fetch('/api/ingest')),
   nudges: () => j<Nudges>(fetch('/api/nudges')),
   requestDoc: (id: number, kind: 'cv' | 'cover' | 'prep') =>
     j<{ id: number; status: string }>(fetch(`/api/roles/${id}/documents`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) })),
