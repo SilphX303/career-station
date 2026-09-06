@@ -78,7 +78,7 @@ class BriefResult(BaseModel):
 
 
 class DocRequest(BaseModel):
-    kind: str  # cv | cover
+    kind: str  # cv | cover | prep
 
 
 class DocResult(BaseModel):
@@ -424,7 +424,7 @@ DOC_KINDS = {"cv", "cover", "prep"}
 @app.post("/api/roles/{role_id}/documents")
 def request_document(role_id: int, body: DocRequest):
     if body.kind not in DOC_KINDS:
-        raise HTTPException(400, "kind must be cv or cover")
+        raise HTTPException(400, f"kind must be one of {sorted(DOC_KINDS)}")
     con = db.connect()
     if not con.execute("SELECT 1 FROM roles WHERE id=?", (role_id,)).fetchone():
         con.close()

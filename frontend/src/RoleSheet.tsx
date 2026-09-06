@@ -272,6 +272,7 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
           <section>
             <div className="lcars-label mb-2">Documents</div>
             <div className="flex flex-wrap gap-2">
+              {/* Prep is hidden until a role is progressing to keep the row tidy; the API accepts it for any role, and the nudges job only requests it for progressing ones. Not a rule. */}
               {(['cv', 'cover', 'prep'] as const).filter((k) => k !== 'prep' || state === 'progressing' || docs.some((x) => x.kind === 'prep')).map((k) => {
                 const d = docs.find((x) => x.kind === k)
                 const label = k === 'cv' ? 'CV' : k === 'cover' ? 'Cover note' : 'Prep pack'
