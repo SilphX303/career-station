@@ -15,6 +15,7 @@ Sibling of cupid-station and Arkadia Forge. Same stack, same dev loop, same depl
 - Phase 3a: documents. Draft CV or cover note per role; bot drafts from the base CV for the role's track. Built 3 Sep 2026. Bot task in `bot/draft-documents.md`. PDF export included (`GET /api/documents/{id}.pdf`, markdown rendered through WeasyPrint with a CV stylesheet). DOCX and edit-in-place are 3b.
 - UI v2: LCARS design system shared with Cupid Station and Starbase (tokens in `frontend/src/index.css`, names are stable API). List is a compact register; tapping a row opens a full-screen sheet (swipe down or Esc to dismiss) with fit, gaps, pipeline note, status buttons, documents and the ad.
 - Decision: no LLM in the app. Scoring and documents are done by the Claude Code bot on ark-agent-01 (Max subscription) via the API. See `bot/score-roles.md`.
+- Near miss and restore, 23 Sep 2026. Prompted by role 1397 (Octopus Senior TechOps Generalist), hidden for a fortnight on an Adzuna figure of £65k when the Lever ad said £65k to £90k. Three changes: a salary printed in the ad (board snippet or fetched page, header included) overrides the board's figure, upwards only, before filtering; the salary rule has a near-miss band (default 80% to 90% of the floor) that lands in a `Near miss` tab instead of the bin, and near misses get their full ad fetched at crawl so a stated range can rescue them automatically; and `PUT /api/roles/{id}/filtered` plus Restore buttons let Steve unhide anything, with `filter_override` so no later crawl, paste or re-check hides it again. `POST /api/filters/reapply` (Profile page button) re-checks everything hidden; it runs once automatically on first start (marker `/data/.near-miss-backfill`). Only ever unhides or reclassifies.
 
 ## Goals (v0.1)
 
@@ -90,7 +91,7 @@ Search terms (env or profile table, editable in UI):
 Hard filters (roles failing these are stored but never scored or notified):
 
 - Location: remote, hybrid within reach of Polegate (Brighton, Eastbourne, Lewes, Crawley, Gatwick corridor, London hybrid 2 days or fewer), or explicitly UK-wide remote
-- Salary: if stated, max must be at or above the floor in the profile (currently £74k). Unstated salary passes the filter but is flagged.
+- Salary: if stated, max must be at or above 90% of the floor in the profile (currently £74k). Between the near-miss band (`near_miss_pct`, default 80% of the floor) and 90% the role is hidden but listed under Near miss for review; below the band it is hidden outright. A salary printed in the ad text overrides the board's figure (upwards only) before the rule runs, so a stated range that clears the floor never gets hidden on a board's guess. Unstated salary passes the filter but is flagged. Salary is checked last, so a near miss is a role that passed everything else. Restored roles (`filter_override = 1`) are never re-filtered.
 - Exclude: roles requiring active SC/DV clearance unless the ad says sponsorship offered; pure service desk analyst roles; contract-only under 6 months
 
 ## Fit scoring

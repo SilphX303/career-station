@@ -10,6 +10,9 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
   const [locs, setLocs] = useState('')
   const [excl, setExcl] = useState('')
   const [floor, setFloor] = useState('')
+  const [nearPct, setNearPct] = useState('80')
+  const [rechecking, setRechecking] = useState(false)
+  const [recheckMsg, setRecheckMsg] = useState<string | null>(null)
   const [thr, setThr] = useState('')
   const [md, setMd] = useState('')
   const [cve, setCve] = useState('')
@@ -25,7 +28,7 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     api.profile().then((x) => {
       setP(x); setMd(x.markdown); setCve(x.cv_engineer); setCvm(x.cv_management); setWatch(lines(x.watchlist)); setTerms(lines(x.search_terms)); setLocs(lines(x.filters.locations))
-      setExcl(lines(x.filters.exclude_terms)); setFloor(String(x.filters.salary_floor ?? '')); setThr(String(x.threshold))
+      setExcl(lines(x.filters.exclude_terms)); setFloor(String(x.filters.salary_floor ?? '')); setNearPct(String(x.filters.near_miss_pct ?? 80)); setThr(String(x.threshold))
     }).catch((e) => setErr(String(e)))
     api.dismissals().then(setDis).catch(() => undefined)
     api.market().then(setMkt).catch(() => undefined)
@@ -35,10 +38,19 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
     try {
       await api.saveProfile({
         markdown: md, cv_engineer: cve, cv_management: cvm, watchlist: split(watch), search_terms: split(terms), threshold: Number(thr) || 75,
-        filters: { salary_floor: Number(floor) || undefined, locations: split(locs), exclude_terms: split(excl) },
+        filters: { salary_floor: Number(floor) || undefined, near_miss_pct: Math.min(90, Math.max(0, Number(nearPct) || 80)), locations: split(locs), exclude_terms: split(excl) },
       })
       setSaved(true); setTimeout(() => setSaved(false), 1500)
     } catch (e) { setErr(String(e)) }
+  }
+
+  async function recheck() {
+    setRechecking(true); setRecheckMsg(null)
+    try {
+      await save()
+      const r = await api.reapplyFilters()
+      setRecheckMsg(`${r.checked} hidden roles re-checked: ${r.unhidden} restored${r.salary_from_ad ? ` (${r.salary_from_ad} from a salary in the ad)` : ''}, ${r.near_miss} in Near miss, ${r.still_hidden} still hidden`)
+    } catch (e) { setErr(String(e)) } finally { setRechecking(false) }
   }
 
   async function findFeeds() {
@@ -142,9 +154,19 @@ export default function ProfilePage({ onDone }: { onDone: () => void }) {
             <input value={floor} onChange={(e) => setFloor(e.target.value)} inputMode="numeric" className={box} />
           </label>
           <label className="block">
+            <span className="lcars-label mb-1 block">Near-miss band (% of floor)</span>
+            <input value={nearPct} onChange={(e) => setNearPct(e.target.value)} inputMode="numeric" className={box} />
+            <span className="lcars-note mt-1 block">Below 90% of the floor is hidden. Down to this percentage it goes to Near miss instead{Number(floor) ? `: £${Math.round(Number(floor) * (Number(nearPct) || 80) / 100000)}k to £${Math.round(Number(floor) * 0.9 / 1000)}k` : ''}. A salary printed in the ad overrides the board's figure.</span>
+          </label>
+          <label className="block">
             <span className="lcars-label mb-1 block">Notify me at score</span>
             <input value={thr} onChange={(e) => setThr(e.target.value)} inputMode="numeric" className={box} />
           </label>
+          <div>
+            <button onClick={recheck} disabled={rechecking} className="lcars-btn">{rechecking ? 'Re-checking' : 'Re-check hidden roles'}</button>
+            <span className="lcars-note mt-1 block">Saves, then re-runs the filters over everything hidden. Only ever restores or reclassifies; hand-restored roles are left alone.</span>
+            {recheckMsg && <span className="lcars-note mt-1 block text-lavender">{recheckMsg}</span>}
+          </div>
         </div>
       </section>
 

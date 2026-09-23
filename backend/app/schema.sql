@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS roles (
   desc_quality TEXT,
   desc_reason TEXT,
   watch INTEGER NOT NULL DEFAULT 0,
-  cluster_id INTEGER
+  cluster_id INTEGER,
+  near_miss INTEGER NOT NULL DEFAULT 0,        -- hidden on salary, but close enough to review
+  filter_override INTEGER NOT NULL DEFAULT 0,  -- restored by hand or by the ad's own salary; never re-filtered
+  override_note TEXT
 );
 CREATE TABLE IF NOT EXISTS scores (
   role_id INTEGER PRIMARY KEY REFERENCES roles(id),

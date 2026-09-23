@@ -7,10 +7,16 @@ type Props = {
   threshold: number
   onClose: () => void
   onStatus: (id: number, state: string, reason?: string, note?: string) => void
+  onRestore: (id: number, note?: string) => void
 }
 
-export default function RoleSheet({ role, threshold, onClose, onStatus }: Props) {
+type Live = Pick<Role, 'filtered' | 'near_miss' | 'filter_override' | 'override_note' | 'filter_reason' | 'salary_min' | 'salary_max' | 'salary_text'>
+
+export default function RoleSheet({ role, threshold, onClose, onStatus, onRestore }: Props) {
   const [detail, setDetail] = useState<RoleDetail | null>(null)
+  // filter and salary state can change while the sheet is open (Load full ad may unhide it), so keep a live copy
+  const [live, setLive] = useState<Live>(role)
+  const [restoreNote, setRestoreNote] = useState('')
   const [docs, setDocs] = useState<Doc[]>([])
   const [research, setResearch] = useState<Research | null>(null)
   const [showDoc, setShowDoc] = useState<Doc | null>(null)
@@ -81,6 +87,8 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
     try {
       const r = await api.loadDescription(role.id)
       setDetail((d) => d ? { ...d, description: r.description, truncated: r.truncated } : d)
+      setLive((l) => ({ ...l, filtered: r.filtered, near_miss: r.near_miss, filter_override: r.filter_override, override_note: r.override_note,
+        filter_reason: r.filtered ? l.filter_reason : null, salary_min: r.salary_min, salary_max: r.salary_max, salary_text: r.salary_text }))
       if (!r.ok) setErr('Could not fetch more of this ad; open it on the board.')
     } catch (e) { setErr(String(e)) } finally { setLoadingAd(false) }
   }
@@ -135,7 +143,7 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
                 {isAgency(role) && <span className="lcars-code mr-2 border border-line-hi px-1">Agency</span>}
                 {role.company ?? 'Unknown company'}{role.location ? `, ${role.location}` : ''}
               </p>
-              <p className={`lcars-readout mt-0.5 text-sm ${(role.salary_max ?? role.salary_min ?? 0) >= 74000 ? 'text-sage' : 'text-dim'}`}>{salary(role)}</p>
+              <p className={`lcars-readout mt-0.5 text-sm ${(live.salary_max ?? live.salary_min ?? 0) >= 74000 ? 'text-sage' : 'text-dim'}`}>{salary({ ...role, ...live })}</p>
             </div>
             <button onClick={onClose} className="lcars-btn lcars-btn-quiet hidden sm:block" aria-label="Close">Close</button>
           </div>
@@ -143,6 +151,24 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
 
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-6">
           {err && <p className="border border-alert px-3 py-2 text-xs text-alert">{err}</p>}
+
+          {live.filtered === 1 && (
+            <section className={`lcars-panel border-l-2 p-3 ${live.near_miss === 1 ? 'border-l-amber' : 'border-l-alert'}`}>
+              <div className="lcars-label mb-1">{live.near_miss === 1 ? 'Near miss' : 'Hidden'}: <span className={live.near_miss === 1 ? 'text-amber' : 'text-alert'}>{live.filter_reason ?? 'filtered'}</span></div>
+              <p className="mb-2 text-sm text-dim">
+                {live.near_miss === 1
+                  ? 'Hidden on the board\'s salary figure, which is often a guess. If the ad says more, restore it; the bot scores it next run and nothing will hide it again.'
+                  : 'Restore to score and show it anyway. The restore sticks through later crawls and pastes.'}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={restoreNote} onChange={(e) => setRestoreNote(e.target.value)} placeholder="Optional: why, e.g. ad says £65k to £90k" className="lcars-input min-w-0 flex-1" />
+                <button onClick={() => onRestore(role.id, restoreNote || undefined)} className="lcars-btn lcars-btn-primary">Restore</button>
+              </div>
+            </section>
+          )}
+          {live.filtered === 0 && live.filter_override === 1 && (
+            <p className="lcars-note text-sage">Restored{live.override_note ? `: ${live.override_note}` : ''}. Filters leave this one alone now.</p>
+          )}
 
           {role.reasons.length > 0 && (
             <section>
@@ -298,7 +324,7 @@ export default function RoleSheet({ role, threshold, onClose, onStatus }: Props)
               </p>
             )}
             {docs.find((d) => d.status === 'failed')?.content && (
-              <p className="lcars-code mt-2 whitespace-normal text-alert">{docs.find((d) => d.status === 'failed')!.content}</p>
+              <p className="lcars-note mt-2 text-alert">{docs.find((d) => d.status === 'failed')!.content}</p>
             )}
             {showDoc?.content && (
               <div className="lcars-panel mt-3 p-3">

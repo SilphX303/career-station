@@ -10,7 +10,8 @@ const FILTERS: { key: string; label: string; code: string }[] = [
   { key: 'shortlisted', label: 'Shortlisted', code: '02' },
   { key: 'applied', label: 'Applied', code: '03' },
   { key: 'progressing', label: 'Progressing', code: '04' },
-  { key: 'filtered', label: 'Filtered out', code: '05' },
+  { key: 'near_miss', label: 'Near miss', code: '05' },
+  { key: 'filtered', label: 'Filtered out', code: '06' },
 ]
 
 export default function App() {
@@ -54,6 +55,14 @@ export default function App() {
     setOpenId(null)
     setRoles((rs) => rs.filter((r) => r.id !== id))
     try { await api.setStatus(id, state, reason, note) } catch (e) { setErr(String(e)); void load() }
+  }
+
+  async function restore(id: number, note?: string) {
+    // Off the hidden lists it goes; it shows up under Worth a look once the bot has scored it
+    setOpenId(null)
+    if (filter === 'filtered' || filter === 'near_miss') setRoles((rs) => rs.filter((r) => r.id !== id))
+    else setRoles((rs) => rs.map((r) => r.id === id ? { ...r, filtered: 0, near_miss: 0, filter_reason: null, filter_override: 1 } : r))
+    try { await api.setFiltered(id, false, note) } catch (e) { setErr(String(e)); void load() }
   }
 
   async function crawl() {
@@ -148,14 +157,18 @@ export default function App() {
             </div>
           )}
 
+          {filter === 'near_miss' && !qDebounced && (
+            <p className="lcars-note mb-2">Hidden on salary, but close to the floor. Boards guess wrong; if the ad says more, restore it and the bot will score it.</p>
+          )}
+
           <div className="lcars-panel">
             {shown.length === 0 && <p className="px-4 py-6 text-sm text-dim">Nothing here yet.</p>}
             <ul className="divide-y divide-line">
               {shown.map((r) => {
                 const above = r.score != null && r.score >= threshold
                 return (
-                  <li key={r.id}>
-                    <button onClick={() => setOpenId(r.id)} className="relative flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-panel-2 sm:px-4">
+                  <li key={r.id} className="flex items-stretch">
+                    <button onClick={() => setOpenId(r.id)} className="relative flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-panel-2 sm:px-4">
                       <span className={`absolute inset-y-0 left-0 w-[2px] ${trackBg(r.track)}`} />
                       <div className="w-11 shrink-0 text-right">
                         <span className={`lcars-readout text-2xl leading-none ${r.score == null ? 'text-faint' : above ? 'text-amber' : 'text-dim'}`}>{r.score ?? '--'}</span>
@@ -179,7 +192,8 @@ export default function App() {
                         <div className="truncate text-xs text-dim">
                           {isAgency(r) && <span className="lcars-code mr-1.5">AGY</span>}
                           {r.company ?? 'Unknown company'}{r.location ? `, ${r.location}` : ''}
-                          {r.filtered === 1 && r.filter_reason ? <span className="text-alert"> · hidden: {r.filter_reason}</span> : null}
+                          {r.filtered === 1 && r.filter_reason ? <span className={r.near_miss === 1 ? 'text-amber' : 'text-alert'}> · hidden: {r.filter_reason}</span> : null}
+                          {r.filtered === 0 && r.filter_override === 1 ? <span className="text-sage"> · restored</span> : null}
                         </div>
                       </div>
                       <div className="w-[76px] shrink-0 text-right sm:w-auto">
@@ -187,6 +201,9 @@ export default function App() {
                         <div className="lcars-code mt-0.5">{r.source === 'screenshot' || r.source === 'pasted' ? 'MANUAL' : r.source} {ago(r.first_seen)}</div>
                       </div>
                     </button>
+                    {r.filtered === 1 && (
+                      <button onClick={() => void restore(r.id)} className="lcars-btn lcars-btn-quiet my-2 mr-2 shrink-0 self-center border-line-hi" title="Unhide this role and queue it for scoring">Restore</button>
+                    )}
                   </li>
                 )
               })}
@@ -196,7 +213,7 @@ export default function App() {
       )}
 
       {adding && <AddRole onClose={() => setAdding(false)} onAdded={() => void load()} />}
-      {openRole && <RoleSheet role={openRole} threshold={threshold} onClose={() => setOpenId(null)} onStatus={act} />}
+      {openRole && <RoleSheet role={openRole} threshold={threshold} onClose={() => setOpenId(null)} onStatus={act} onRestore={restore} />}
 
       <footer className="fixed inset-x-0 bottom-0 border-t border-line bg-space/95 px-3 py-1.5 backdrop-blur sm:px-4">
         <div className="mx-auto flex max-w-3xl gap-4 overflow-x-auto">

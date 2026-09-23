@@ -12,9 +12,10 @@ export function money(n: number) {
 }
 
 export function salary(r: Role) {
-  if (r.salary_min && r.salary_max && r.salary_min !== r.salary_max) return `${money(r.salary_min)} to ${money(r.salary_max)}${r.salary_text === 'estimated' ? ' est.' : ''}`
-  if (r.salary_max) return money(r.salary_max)
-  if (r.salary_min) return money(r.salary_min)
+  const tag = r.salary_text === 'estimated' ? ' est.' : r.salary_text === 'from ad' ? ' (from the ad)' : ''
+  if (r.salary_min && r.salary_max && r.salary_min !== r.salary_max) return `${money(r.salary_min)} to ${money(r.salary_max)}${tag}`
+  if (r.salary_max) return money(r.salary_max) + tag
+  if (r.salary_min) return money(r.salary_min) + tag
   return r.salary_text ?? 'Salary not stated'
 }
 

@@ -52,7 +52,8 @@ def _migrate(con: sqlite3.Connection) -> None:
     wanted = {
         "roles": {"salary_text": "TEXT", "remote_flag": "INTEGER NOT NULL DEFAULT 0",
                   "filtered": "INTEGER NOT NULL DEFAULT 0", "filter_reason": "TEXT",
-                  "desc_quality": "TEXT", "desc_reason": "TEXT", "watch": "INTEGER NOT NULL DEFAULT 0", "cluster_id": "INTEGER"},
+                  "desc_quality": "TEXT", "desc_reason": "TEXT", "watch": "INTEGER NOT NULL DEFAULT 0", "cluster_id": "INTEGER",
+                  "near_miss": "INTEGER NOT NULL DEFAULT 0", "filter_override": "INTEGER NOT NULL DEFAULT 0", "override_note": "TEXT"},
         "sources": {"last_error": "TEXT"},
         "scores": {"track": "TEXT", "run_id": "TEXT"},
         "status": {"reason": "TEXT"},

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import cluster, crawl, db, fulltext, notify, render, sync
+from . import cluster, crawl, db, filters, fulltext, notify, render, sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -21,11 +21,28 @@ CRAWL_HOURS = int(os.environ.get("CAREER_CRAWL_HOURS", "4"))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
+    _backfill_near_miss()
     sched = AsyncIOScheduler(timezone="Europe/London")
     sched.add_job(crawl.run_all, "interval", hours=CRAWL_HOURS, id="crawl")
     sched.start()
     yield
     sched.shutdown(wait=False)
+
+
+def _backfill_near_miss() -> None:
+    """One-off on first start after the near-miss change: re-check every hidden role so the ones within the
+    band move to Near miss and any whose stored ad states a clearing salary come back. Marker file stops repeats."""
+    marker = db.DATA_DIR / ".near-miss-backfill"
+    if marker.exists():
+        return
+    con = db.connect()
+    try:
+        prof = con.execute("SELECT filters FROM profile WHERE id=1").fetchone()
+        out = filters.reapply_hidden(con, json.loads(prof["filters"]) if prof else {})
+        marker.write_text(json.dumps({"at": db.now(), **out}))
+        logging.getLogger("career").info("near-miss backfill: %s", out)
+    finally:
+        con.close()
 
 
 app = FastAPI(title="career-station", lifespan=lifespan)
@@ -107,7 +124,8 @@ def list_roles(state: str | None = None, limit: int = 200, q: str | None = None)
     search = (q or "").strip()
     con = db.connect()
     q = """SELECT r.id, r.title, r.company, r.location, r.remote_flag, r.salary_min, r.salary_max, r.salary_text,
-                  r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, r.desc_quality, r.watch, s.name AS source,
+                  r.url, r.posted_at, r.first_seen, r.filtered, r.filter_reason, r.near_miss, r.filter_override, r.override_note,
+                  r.desc_quality, r.watch, s.name AS source,
                   sc.score, sc.reasons, sc.track, sc.scored_at, sc.run_id, sc.model AS score_model, st.state,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cv' ORDER BY d.id DESC LIMIT 1) AS doc_cv,
                   (SELECT status FROM documents d WHERE d.role_id=r.id AND d.kind='cover' ORDER BY d.id DESC LIMIT 1) AS doc_cover,
@@ -127,9 +145,11 @@ def list_roles(state: str | None = None, limit: int = 200, q: str | None = None)
         for word in search.split()[:6]:
             q += " AND (r.title LIKE ? OR COALESCE(r.company,'') LIKE ? OR COALESCE(r.location,'') LIKE ? OR COALESCE(r.description,'') LIKE ?)"
             args.extend([f"%{word}%"] * 4)
-        q += " AND r.filtered = 0"
+        q += " AND (r.filtered = 0 OR r.near_miss = 1)"
     elif state == "filtered":
-        q += " AND r.filtered = 1"
+        q += " AND r.filtered = 1 AND r.near_miss = 0"
+    elif state == "near_miss":
+        q += " AND r.filtered = 1 AND r.near_miss = 1"
     elif state:
         q += " AND r.filtered = 0 AND st.state = ?"
         args.append(state)
@@ -195,6 +215,56 @@ def set_status(role_id: int, body: StatusIn):
         )
     con.close()
     return {"ok": True, "state": body.state}
+
+
+class FilteredIn(BaseModel):
+    filtered: bool
+    note: str | None = None
+
+
+@app.put("/api/roles/{role_id}/filtered")
+async def set_filtered(role_id: int, body: FilteredIn):
+    """Restore a hidden role (filtered=false) so it is scored and shown like any other. The override sticks:
+    no later crawl, paste or re-check will hide it again. filtered=true hides it by hand instead."""
+    con = db.connect()
+    r = con.execute("SELECT id, filtered, near_miss, filter_reason, desc_quality, external_id, url FROM roles WHERE id=?", (role_id,)).fetchone()
+    if not r:
+        con.close()
+        raise HTTPException(404)
+    note = (body.note or "").strip() or None
+    with con:
+        if body.filtered:
+            con.execute(
+                """UPDATE roles SET filtered=1, near_miss=0, filter_override=0,
+                   filter_reason=?, override_note=NULL WHERE id=?""",
+                (f"hidden by hand{': ' + note if note else ''}", role_id))
+        else:
+            con.execute(
+                """UPDATE roles SET filtered=0, near_miss=0, filter_reason=NULL, filter_override=1, override_note=? WHERE id=?""",
+                (note or (f"restored by hand (was: {r['filter_reason']})" if r["filter_reason"] else "restored by hand"), role_id))
+            con.execute("INSERT OR IGNORE INTO status (role_id, state, changed_at) VALUES (?, 'new', ?)", (role_id, db.now()))
+    loaded = None
+    if not body.filtered and r["desc_quality"] == "partial" and r["url"]:
+        # best effort: give the scorer the whole ad rather than the board's stub
+        src = con.execute("SELECT s.name FROM roles r JOIN sources s ON s.id=r.source_id WHERE r.id=?", (role_id,)).fetchone()["name"]
+        try:
+            loaded = await crawl.fill_descriptions(con, [(role_id, src, r["external_id"], r["url"])], dict(os.environ), cap=1)
+        except Exception as e:  # noqa: BLE001
+            loaded = {"error": str(e)[:200]}
+    out = dict(con.execute("SELECT id, filtered, near_miss, filter_reason, filter_override, override_note, salary_min, salary_max, salary_text FROM roles WHERE id=?", (role_id,)).fetchone())
+    con.close()
+    return {"ok": True, **out, "full_ad": loaded}
+
+
+@app.post("/api/filters/reapply")
+def reapply_filters():
+    """Re-check every hidden role against the current rules (after changing the floor or the near-miss band).
+    Only ever unhides or reclassifies; visible roles and hand-restored ones are untouched."""
+    con = db.connect()
+    prof = get_profile()
+    out = filters.reapply_hidden(con, prof["filters"])
+    con.close()
+    return out
 
 
 def dismissal_patterns(con, limit: int = 40) -> dict:
@@ -539,12 +609,16 @@ async def load_description(role_id: int):
         con.close()
         raise HTTPException(404)
     result = await crawl.fill_descriptions(con, [(r["id"], r["source"], r["external_id"], r["url"])], dict(os.environ), cap=1)
-    desc = con.execute("SELECT description FROM roles WHERE id=?", (role_id,)).fetchone()["description"]
+    row = con.execute("SELECT description, filtered, near_miss, filter_override, override_note, salary_min, salary_max, salary_text FROM roles WHERE id=?", (role_id,)).fetchone()
+    desc = row["description"]
     q, why = fulltext.assess(desc)
     with con:
         con.execute("UPDATE roles SET desc_quality=?, desc_reason=? WHERE id=?", (q, why, role_id))
     con.close()
-    return {"ok": result["filled"] == 1, "description": desc, "truncated": q == "partial", "reason": why}
+    return {"ok": result["filled"] == 1, "description": desc, "truncated": q == "partial", "reason": why,
+            "unhidden": bool(result.get("unhidden_by_salary")), "filtered": row["filtered"], "near_miss": row["near_miss"],
+            "filter_override": row["filter_override"], "override_note": row["override_note"],
+            "salary_min": row["salary_min"], "salary_max": row["salary_max"], "salary_text": row["salary_text"]}
 
 
 @app.delete("/api/roles/{role_id}/score")
@@ -684,20 +758,40 @@ def _create_manual_role(con, fields: dict, source_name: str, images: list[str]) 
     desc = fields.get("description") or ""
     remote = bool(fields.get("remote")) or "remote" in f"{loc or ''} {desc}".lower()
     role = {"title": title, "description": desc, "location": loc, "remote_flag": remote,
-            "salary_min": fields.get("salary_min"), "salary_max": fields.get("salary_max")}
-    fl, why = _filters.apply(role, filt)
+            "salary_min": fields.get("salary_min"), "salary_max": fields.get("salary_max"), "salary_text": fields.get("salary_text")}
+    sal = _filters.salary_from_ad(role, desc)
+    if sal:
+        role["salary_min"], role["salary_max"], role["salary_text"] = sal[0], sal[1], "from ad"
+    fl, why, nm = _filters.apply(role, filt)
+    # A role Steve already restored by hand stays restored when the same ad is pasted again
+    override, override_note = 0, None
+    if fl:
+        prior = _restored_twin(con, title, company)
+        if prior:
+            fl, why, nm, override, override_note = False, None, False, 1, f"restored earlier as role {prior}"
     dq, dr = _fulltext.assess(desc)
     h = hashlib.sha1(f"{source_name}|{company}|{title}|{loc}|{ts}".encode()).hexdigest()
     cur = con.execute(
         """INSERT INTO roles (source_id, external_id, url, title, company, location, remote_flag, salary_min, salary_max, salary_text,
-           description, posted_at, first_seen, last_seen, hash, filtered, filter_reason, desc_quality, desc_reason)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (sid, None, fields.get("url") or "", title, company, loc, int(remote), fields.get("salary_min"), fields.get("salary_max"),
-         fields.get("salary_text"), desc, None, ts, ts, h, int(fl), why, dq, dr))
+           description, posted_at, first_seen, last_seen, hash, filtered, filter_reason, desc_quality, desc_reason,
+           near_miss, filter_override, override_note)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (sid, None, fields.get("url") or "", title, company, loc, int(remote), role["salary_min"], role["salary_max"],
+         role["salary_text"], desc, None, ts, ts, h, int(fl), why, dq, dr, int(nm), override, override_note))
     rid = cur.lastrowid
     con.execute("INSERT OR IGNORE INTO status (role_id, state, changed_at, note) VALUES (?, 'new', ?, ?)",
                 (rid, ts, "[screenshot] " + ", ".join(images) if images else None))
     return rid
+
+
+def _restored_twin(con, title: str, company: str | None) -> int | None:
+    """Id of a hand-restored role with the same normalised title and company, if any."""
+    from .sources.base import _norm
+    key = (_norm(title), _norm(company or ""))
+    for r in con.execute("SELECT id, title, company FROM roles WHERE filter_override = 1 AND filtered = 0"):
+        if (_norm(r["title"]), _norm(r["company"] or "")) == key:
+            return r["id"]
+    return None
 
 
 def _store_image(data: bytes, ext: str) -> list[str]:

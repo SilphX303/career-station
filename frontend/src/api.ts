@@ -20,6 +20,9 @@ export type Role = {
   state: string | null
   filtered: number
   filter_reason: string | null
+  near_miss?: number
+  filter_override?: number
+  override_note?: string | null
   doc_cv?: string | null
   doc_cover?: string | null
   doc_prep?: string | null
@@ -75,7 +78,7 @@ export type Profile = {
   cv_management: string
   watchlist: string[]
   search_terms: string[]
-  filters: { salary_floor?: number; locations?: string[]; exclude_terms?: string[] }
+  filters: { salary_floor?: number; near_miss_pct?: number; locations?: string[]; exclude_terms?: string[] }
   threshold: number
   updated_at: string
 }
@@ -107,7 +110,12 @@ export const api = {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state, reason, note }),
     })),
   dismissals: () => j<Dismissals>(fetch('/api/profile/dismissals')),
-  loadDescription: (id: number) => j<{ ok: boolean; description: string | null; truncated: boolean }>(fetch(`/api/roles/${id}/description`, { method: 'POST' })),
+  loadDescription: (id: number) => j<{ ok: boolean; description: string | null; truncated: boolean; unhidden: boolean; filtered: number; near_miss: number; filter_override: number; override_note: string | null; salary_min: number | null; salary_max: number | null; salary_text: string | null }>(fetch(`/api/roles/${id}/description`, { method: 'POST' })),
+  setFiltered: (id: number, filtered: boolean, note?: string) =>
+    j<{ ok: boolean; filtered: number; near_miss: number; filter_override: number; override_note: string | null }>(fetch(`/api/roles/${id}/filtered`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filtered, note }),
+    })),
+  reapplyFilters: () => j<{ checked: number; unhidden: number; near_miss: number; still_hidden: number; salary_from_ad: number }>(fetch('/api/filters/reapply', { method: 'POST' })),
   rescore: (id: number) => j<{ ok: boolean }>(fetch(`/api/roles/${id}/score`, { method: 'DELETE' })),
   research: (id: number) => j<Research | null>(fetch(`/api/roles/${id}/research`)),
   requestResearch: (id: number) => j<{ ok: boolean }>(fetch(`/api/roles/${id}/research`, { method: 'POST' })),

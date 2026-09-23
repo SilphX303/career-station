@@ -112,6 +112,17 @@ h1, h2, h3 {
   white-space: nowrap;
 }
 
+/* a code-styled sentence that is allowed to wrap: hints under controls, restore notes */
+.lcars-note {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  color: var(--color-faint);
+  white-space: normal;
+}
+
 .lcars-readout {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

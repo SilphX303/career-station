@@ -16,7 +16,8 @@ Dockerfile build from GitHub. Add a named volume `career-data` mounted at `/data
 
 ## API
 
-- `GET /api/roles?state=` list (default hides dismissed/rejected/declined)
+- `GET /api/roles?state=` list (default hides dismissed/rejected/declined; `state=near_miss` for roles hidden on a salary close to the floor, `state=filtered` for the rest)
+- `PUT /api/roles/{id}/filtered` `{"filtered": false, "note": "..."}` restore a hidden role for good; `POST /api/filters/reapply` re-check everything hidden against the current rules
 - `PUT /api/roles/{id}/status` `{"state": "shortlisted"}`
 - `POST /api/crawl` run all sources now
 - `GET /api/sources` health
